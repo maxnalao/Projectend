@@ -1,0 +1,11 @@
+Django==4.2.0
+djangorestframework==3.14.0
+djangorestframework-simplejwt==5.2.2
+django-cors-headers==4.0.0
+channels==4.0.0
+channels-redis==4.1.0
+Pillow==9.5.0
+python-decouple==3.8  # ✅ เพิ่มบรรทัดนี้ (สำหรับ .env support)
+mysql-connector-python==8.0.33  # ถ้าใช้ MySQL
+PyMySQL==1.0.2
+linebot==3.2.0
