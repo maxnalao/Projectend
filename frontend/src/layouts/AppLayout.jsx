@@ -28,6 +28,9 @@ export default function AppLayout() {
   
   const { user } = useUser();
 
+  // ✅ เช็คว่า Admin หรือ Employee
+  const isAdmin = user?.is_staff || user?.is_superuser || false;
+
   useEffect(() => {
     setMenuOpen(false);
     setProfileOpen(false);
@@ -51,16 +54,31 @@ export default function AppLayout() {
     }
   };
 
-  const navItems = useMemo(
-    () => [
-      { to: "/overview", label: "ภาพรวม" },
-      { to: "/products", label: "สินค้า" },
-      { to: "/stock", label: "สต็อกสินค้า" },
-      { to: "/history", label: "ประวัติ" },
-      { to: "/users", label: "ผู้ใช้" },
-    ],
-    []
-  );
+  // ✅ Navbar items ตามสิทธิ์
+  const navItems = useMemo(() => {
+    const baseItems = [];
+    
+    if (isAdmin) {
+      // ✅ Admin เห็น: ภาพรวม, สินค้า, สต็อก, ประวัติ, ผู้ใช้
+      baseItems.push(
+        { to: "/overview", label: "ภาพรวม" },
+        { to: "/products", label: "สินค้า" },
+        { to: "/stock", label: "สต็อกสินค้า" },
+        { to: "/task-management", label: "จัดการงาน" },
+        { to: "/history", label: "ประวัติ" },
+        { to: "/users", label: "ผู้ใช้" }
+      );
+    } else {
+      // ✅ Employee เห็น: งานของฉัน, สินค้า, สต็อกสินค้า
+      baseItems.push(
+        { to: "/tasks", label: "งานของฉัน" },
+        { to: "/products", label: "สินค้า" },
+        { to: "/stock", label: "สต็อกสินค้า" }
+      );
+    }
+    
+    return baseItems;
+  }, [isAdmin]);
 
   const userName = user?.first_name && user?.last_name
     ? `${user.first_name} ${user.last_name}`
@@ -76,8 +94,8 @@ export default function AppLayout() {
     : null;
 
   console.log("🔍 AppLayout - User:", user);
-  console.log("🔍 AppLayout - userName:", userName);
-  console.log("🔍 AppLayout - profileImageUrl:", profileImageUrl);
+  console.log("🔍 AppLayout - isAdmin:", isAdmin);
+  console.log("🔍 AppLayout - navItems:", navItems);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -162,6 +180,10 @@ export default function AppLayout() {
                       <div>
                         <p className="text-sm font-semibold text-gray-800">{userName}</p>
                         <p className="text-xs text-gray-500 mt-0.5">{userEmail}</p>
+                        {/* ✅ แสดง role */}
+                        <p className="text-xs text-blue-600 mt-1 font-medium">
+                          {isAdmin ? "👤 ผู้ดูแลระบบ" : "👨‍💼 พนักงาน"}
+                        </p>
                       </div>
                     </div>
                   </div>

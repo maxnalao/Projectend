@@ -1,8 +1,22 @@
-# inventory/serializers.py (FIXED - NO 'price' field)
+# inventory/serializers.py (COMPLETE - ALL SERIALIZERS)
+
 from rest_framework import serializers
-from .models import Product, Category, Listing, Festival, BestSeller, FestivalForecast, ForecastProduct
+from django.contrib.auth import get_user_model
+from .models import Product, Category, Listing, Festival, BestSeller, FestivalForecast, ForecastProduct, Task
+
+User = get_user_model()
 
 
+# ================ User Serializer (NEW) ================
+class UserSerializer(serializers.ModelSerializer):
+    """Serializer สำหรับดึงข้อมูลผู้ใช้"""
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'first_name', 'last_name', 'email', 'is_staff', 'is_superuser']
+        read_only_fields = ['id', 'is_staff', 'is_superuser']
+
+
+# ================ Category Serializer ================
 class CategorySerializer(serializers.ModelSerializer):
     product_count = serializers.SerializerMethodField()
     
@@ -14,6 +28,7 @@ class CategorySerializer(serializers.ModelSerializer):
         return Product.objects.filter(category=obj, is_deleted=False).count()
 
 
+# ================ Product Serializer ================
 class ProductSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
     image_url = serializers.SerializerMethodField()
@@ -66,6 +81,7 @@ class ProductSerializer(serializers.ModelSerializer):
         return float(obj.selling_price * obj.stock)
 
 
+# ================ Listing Serializer ================
 class ListingSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source='product.name', read_only=True)
     product_code = serializers.CharField(source='product.code', read_only=True)
@@ -125,7 +141,7 @@ class ListingSerializer(serializers.ModelSerializer):
         return None
 
 
-# ==================== FESTIVAL SERIALIZERS (NEW - Phase 3A) ====================
+# ==================== FESTIVAL SERIALIZERS ====================
 
 class FestivalSerializer(serializers.ModelSerializer):
     """Serializer สำหรับ Festival"""
@@ -161,6 +177,7 @@ class FestivalSerializer(serializers.ModelSerializer):
         return obj.best_sellers.count()
 
 
+# ================ BestSeller Serializer ================
 class BestSellerSerializer(serializers.ModelSerializer):
     """Serializer สำหรับ BestSeller"""
     product_name = serializers.CharField(
@@ -214,6 +231,7 @@ class BestSellerDetailSerializer(serializers.ModelSerializer):
         }
 
 
+# ================ ForecastProduct Serializer ================
 class ForecastProductSerializer(serializers.ModelSerializer):
     """Serializer สำหรับ ForecastProduct"""
     product_name = serializers.CharField(
@@ -233,6 +251,7 @@ class ForecastProductSerializer(serializers.ModelSerializer):
         ]
 
 
+# ================ FestivalForecast Serializer ================
 class FestivalForecastSerializer(serializers.ModelSerializer):
     """Serializer สำหรับ FestivalForecast"""
     festival = FestivalSerializer(read_only=True)
@@ -247,6 +266,7 @@ class FestivalForecastSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'updated_at']
 
 
+# ================ FestivalWithBestSellers Serializer ================
 class FestivalWithBestSellersSerializer(serializers.ModelSerializer):
     """Serializer รวม Festival + Best Sellers"""
     best_sellers = BestSellerSerializer(many=True, read_only=True)
@@ -274,6 +294,7 @@ class FestivalWithBestSellersSerializer(serializers.ModelSerializer):
         return obj.days_until
 
 
+# ================ Response Serializers ================
 class TopProductsResponseSerializer(serializers.Serializer):
     """Serializer สำหรับ Response ของ Top Products"""
     rank = serializers.IntegerField()
@@ -288,3 +309,30 @@ class FestivalForecastResponseSerializer(serializers.Serializer):
     upcoming_festival = serializers.DictField()
     recommendations = serializers.ListField(child=serializers.DictField())
     confidence_score = serializers.FloatField(required=False)
+
+
+# ================ Task Serializer ================
+class TaskSerializer(serializers.ModelSerializer):
+    """Serializer สำหรับ Task"""
+    assigned_to_name = serializers.CharField(source='assigned_to.get_full_name', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    priority_display = serializers.CharField(source='get_priority_display', read_only=True)
+    task_type_display = serializers.CharField(source='get_task_type_display', read_only=True)
+    festival_name = serializers.CharField(source='festival.name', read_only=True, allow_null=True)
+    is_overdue = serializers.BooleanField(read_only=True)
+    days_until_due = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Task
+        fields = [
+            'id', 'title', 'description', 'task_type', 'task_type_display',
+            'assigned_to', 'assigned_to_name',
+            'status', 'status_display', 'priority', 'priority_display',
+            'festival', 'festival_name', 'products', 'target_quantity',
+            'notes', 'due_date', 'created_at', 'updated_at', 'completed_at',
+            'is_overdue', 'days_until_due'
+        ]
+        read_only_fields = ['created_at', 'updated_at', 'completed_at', 'status_display', 'priority_display', 'task_type_display', 'is_overdue']
+    
+    def get_days_until_due(self, obj):
+        return obj.days_until_due

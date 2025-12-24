@@ -1,13 +1,14 @@
-// src/pages/OverviewPage.jsx
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import BestSellerCard from "../components/BestSellerCard";
 import FestivalCalendar from "../components/FestivalCalendar";
+import { useUser } from "../context/UserContext";
 
 export default function OverviewPage() {
   const navigate = useNavigate();
+  const { user } = useUser();
   
   const [data, setData] = useState({
     total_products: 0,
@@ -20,7 +21,9 @@ export default function OverviewPage() {
     category_stats: [],
   });
   const [loading, setLoading] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
+  
+  // ✅ เช็คว่าเป็น Admin จาก user context
+  const isAdmin = user?.is_staff || user?.is_superuser || false;
 
   const load = async () => {
     setLoading(true);
@@ -50,19 +53,7 @@ export default function OverviewPage() {
     }
   };
 
-  const checkAdminStatus = async () => {
-    try {
-      const response = await api.get("/auth/user/");
-      const user = response.data;
-      setIsAdmin(user.is_staff || user.is_superuser);
-    } catch (err) {
-      console.error("Error checking admin status:", err);
-      setIsAdmin(false);
-    }
-  };
-
   useEffect(() => {
-    checkAdminStatus();
     load();
   }, []);
 
@@ -84,6 +75,9 @@ export default function OverviewPage() {
     stock: stat.total_stock,
     color: COLORS[index % COLORS.length]
   }));
+
+  console.log("🔍 OverviewPage - User:", user);
+  console.log("🔍 OverviewPage - isAdmin:", isAdmin);
 
   return (
     <section className="space-y-6">
@@ -237,14 +231,16 @@ export default function OverviewPage() {
         </div>
       </div>
 
-      {/* Charts & Additional Widgets */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <BestSellerCard period="month" limit={4} />
-        <FestivalCalendar />
-      </div>
+      {/* ✅ Charts & Additional Widgets - แสดงแค่สำหรับ Admin */}
+      {isAdmin && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <BestSellerCard period="month" limit={4} />
+          <FestivalCalendar />
+        </div>
+      )}
 
-      {/* Category Stats Charts */}
-      {chartData.length > 0 && (
+      {/* Category Stats Charts - แสดงแค่สำหรับ Admin */}
+      {isAdmin && chartData.length > 0 && (
         <div className="bg-white rounded-xl shadow-sm border p-6">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center text-indigo-600">

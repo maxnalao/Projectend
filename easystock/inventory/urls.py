@@ -1,4 +1,4 @@
-# inventory/urls.py (COMPLETE WITH DASHBOARD ROUTES)
+# inventory/urls.py (COMPLETE WITH USER + TASKS + DASHBOARD)
 # Copy this ENTIRE file and replace your inventory/urls.py completely
 
 from django.urls import path, include
@@ -16,7 +16,13 @@ router.register(r'listings', views.ListingViewSet, basename='listing')
 router.register(r'festivals', views.FestivalViewSet, basename='festival')
 router.register(r'best-sellers', views.BestSellerViewSet, basename='best-seller')
 
-# ✅ NEW - Dashboard Routers
+# ✅ Tasks Router
+router.register(r'tasks', views.TaskViewSet, basename='task')
+
+# ✅ Users Router (NEW)
+router.register(r'users', views.UserViewSet, basename='user')
+
+# ✅ Dashboard Routers
 router.register(r'employee-dashboard', views.EmployeeDashboardViewSet, basename='employee-dashboard')
 router.register(r'admin-dashboard', views.AdminDashboardViewSet, basename='admin-dashboard')
 

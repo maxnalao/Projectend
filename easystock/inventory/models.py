@@ -1,8 +1,9 @@
-# backend/inventory/models.py (UPDATED - Copy Everything)
+# backend/inventory/models.py (FIXED - Copy Everything)
 from django.db import models
 from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
+
 
 # ================ CLASS 1: Category ================
 class Category(models.Model):
@@ -330,3 +331,171 @@ class ForecastProduct(models.Model):
 
     def __str__(self):
         return f"{self.product.name} - {self.recommended_quantity} units"
+
+    
+# ================ CLASS 11: Task (NEW - Phase 4) ================
+# inventory/models.py - CLASS 11: Task (แก้ TASK_TYPE_CHOICES)
+
+class Task(models.Model):
+    """
+    ✅ Model สำหรับการมอบหมายงานให้พนักงาน
+    """
+    
+    # ✅ UPDATED TASK_TYPE_CHOICES - ลบออก: product_listing, visual_merchandising, purchase_followup
+    TASK_TYPE_CHOICES = [
+        ('stock_replenishment', '🎁 เติมสินค้า'),
+        ('stock_issue', '📤 เบิกสต๊อก'),
+        ('inventory_check', '🔍 ตรวจสต็อก'),
+        ('preparation', '📋 เตรียมสินค้า'),
+        ('other', '📝 อื่นๆ'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('pending', '⏳ รอรับ'),
+        ('in_progress', '⚙️ กำลังทำ'),
+        ('completed', '✅ เสร็จ'),
+        ('cancelled', '❌ ยกเลิก'),
+    ]
+    
+    PRIORITY_CHOICES = [
+        ('low', '🟢 ต่ำ'),
+        ('medium', '🟡 ปกติ'),
+        ('high', '🔴 สูง'),
+        ('urgent', '⚠️ ด่วน'),
+    ]
+    
+    # Basic Info
+    title = models.CharField(max_length=255, verbose_name="ชื่องาน")
+    description = models.TextField(verbose_name="รายละเอียด")
+    task_type = models.CharField(
+        max_length=50,
+        choices=TASK_TYPE_CHOICES,
+        default='other',
+        verbose_name="ประเภทงาน"
+    )
+    
+    # Assignment
+    assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='assigned_tasks',
+        verbose_name="มอบหมายให้"
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='created_tasks',
+        verbose_name="สร้างโดย"
+    )
+    
+    # Status & Priority
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending',
+        verbose_name="สถานะ"
+    )
+    priority = models.CharField(
+        max_length=20,
+        choices=PRIORITY_CHOICES,
+        default='medium',
+        verbose_name="ลำดับความสำคัญ"
+    )
+    
+    # Related Data
+    festival = models.ForeignKey(
+        Festival,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='tasks',
+        verbose_name="เทศกาล (ถ้ามี)"
+    )
+    products = models.ManyToManyField(
+        Product,
+        blank=True,
+        related_name='tasks',
+        verbose_name="สินค้าที่เกี่ยวข้อง"
+    )
+    
+    # Task Details
+    target_quantity = models.IntegerField(
+        null=True,
+        blank=True,
+        verbose_name="จำนวนเป้าหมาย"
+    )
+    checklist = models.JSONField(
+        null=True,
+        blank=True,
+        default=list,
+        verbose_name="รายการตรวจสอบ",
+        help_text='ตัวอย่าง: [{"item": "สินค้า 10 ชิ้น", "done": false}]'
+    )
+    image = models.ImageField(
+        upload_to='tasks/',
+        null=True,
+        blank=True,
+        verbose_name="รูปภาพ"
+    )
+    
+    # Timeline
+    due_date = models.DateTimeField(verbose_name="วันกำหนด")
+    notes = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name="หมายเหตุ/รายงานผล"
+    )
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="สร้างเมื่อ")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="อัปเดตเมื่อ")
+    completed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="เสร็จเมื่อ"
+    )
+    
+    class Meta:
+        ordering = ['-priority', 'due_date']
+        verbose_name = "งาน"
+        verbose_name_plural = "งาน"
+        indexes = [
+            models.Index(fields=['assigned_to', 'status']),
+            models.Index(fields=['due_date']),
+            models.Index(fields=['status']),
+        ]
+    
+    def __str__(self):
+        return f"[{self.get_priority_display()}] {self.title} → {self.assigned_to.get_full_name() or self.assigned_to.username}"
+    
+    @property
+    def is_overdue(self):
+        """เช็คว่างานเกินกำหนดหรือไม่"""
+        if self.status == 'completed':
+            return False
+        return timezone.now() > self.due_date
+    
+    @property
+    def days_until_due(self):
+        """คำนวณจำนวนวันจนถึงกำหนด"""
+        if self.status == 'completed':
+            return None
+        delta = self.due_date.date() - timezone.now().date()
+        return delta.days
+    
+    def mark_as_complete(self, notes=""):
+        """ทำเครื่องหมายว่างานเสร็จ"""
+        self.status = 'completed'
+        self.completed_at = timezone.now()
+        if notes:
+            self.notes = (self.notes or '') + f"\n[{timezone.now()}] {notes}"
+        self.save()
+    
+    def save(self, *args, **kwargs):
+        """Auto-update completed_at when status changes"""
+        if self.status == 'completed' and not self.completed_at:
+            self.completed_at = timezone.now()
+        elif self.status != 'completed':
+            self.completed_at = None
+        super().save(*args, **kwargs)
