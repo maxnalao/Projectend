@@ -8,23 +8,35 @@ const BestSellerCard = ({ limit = 10 }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState('month');
-  const [customDays, setCustomDays] = useState('');
+  const [dateRange, setDateRange] = useState({
+    startDate: '',
+    endDate: ''
+  });
+  const [useCustomDate, setUseCustomDate] = useState(false);
 
   useEffect(() => {
     fetchBestSellers();
-  }, [selectedPeriod, customDays]);
+  }, [selectedPeriod, dateRange, useCustomDate]);
 
   const fetchBestSellers = async () => {
     try {
       setLoading(true);
+      const params = {
+        limit: limit
+      };
+
+      // ถ้าใช้ custom date range ให้ส่ง start_date และ end_date
+      if (useCustomDate && dateRange.startDate && dateRange.endDate) {
+        params.start_date = dateRange.startDate;
+        params.end_date = dateRange.endDate;
+        params.period = 'custom';
+      } else {
+        params.period = selectedPeriod;
+      }
+
       const response = await api.get(
         `/best-sellers/top_products/`,
-        {
-          params: {
-            period: selectedPeriod,
-            limit: limit
-          }
-        }
+        { params }
       );
       setBestSellers(response.data.results || []);
       setError(null);
@@ -42,17 +54,55 @@ const BestSellerCard = ({ limit = 10 }) => {
       'all': 'ทั้งหมด',
       'year': 'ปีนี้',
       'month': 'เดือนนี้',
+      '1days': '1 วัน',
+      '3days': '3 วัน',
       '7days': '7 วัน',
       '30days': '30 วัน'
     };
     return labels[period] || period;
   };
 
-  const handleCustomDaysChange = (e) => {
-    const value = e.target.value;
-    if (value === '' || /^\d+$/.test(value)) {
-      setCustomDays(value);
+  const handlePeriodClick = (period) => {
+    setSelectedPeriod(period);
+    setUseCustomDate(false);
+  };
+
+  const handleDateChange = (e) => {
+    const { name, value } = e.target;
+    setDateRange(prev => ({
+      ...prev,
+      [name]: value
+    }));
+    setUseCustomDate(true);
+  };
+
+  const handleClearCustomDate = () => {
+    setDateRange({
+      startDate: '',
+      endDate: ''
+    });
+    setUseCustomDate(false);
+    setSelectedPeriod('month');
+  };
+
+  // ✅ คำนวณเดือน-ปี ที่เลือก
+  const getSelectedDateLabel = () => {
+    if (!dateRange.startDate || !dateRange.endDate) return '';
+    
+    const start = new Date(dateRange.startDate);
+    const end = new Date(dateRange.endDate);
+    
+    const startDay = start.getDate();
+    const endDay = end.getDate();
+    const startMonth = start.toLocaleString('th-TH', { month: 'short' });
+    const endMonth = end.toLocaleString('th-TH', { month: 'short' });
+    const startYear = start.getFullYear() + 543;
+    const endYear = end.getFullYear() + 543;
+    
+    if (startMonth === endMonth && startYear === endYear) {
+      return `${startDay}-${endDay} ${startMonth} ${startYear}`;
     }
+    return `${startDay} ${startMonth} ${startYear} - ${endDay} ${endMonth} ${endYear}`;
   };
 
   return (
@@ -63,59 +113,81 @@ const BestSellerCard = ({ limit = 10 }) => {
           <h3>สินค้าขายดี</h3>
         </div>
         <div className="bsc-period-filter">
-          {/* ✅ Preset buttons - 1, 3, 7, 30 วัน */}
-          {['1', '3', '7', '30'].map((days) => (
+          {['7days',].map((period) => (
             <button
-              key={days}
-              className={`period-btn ${selectedPeriod === `${days}days` ? 'active' : ''}`}
-              onClick={() => {
-                setSelectedPeriod(`${days}days`);
-              }}
+              key={period}
+              className={`period-btn ${selectedPeriod === period && !useCustomDate ? 'active' : ''}`}
+              onClick={() => handlePeriodClick(period)}
             >
-              {days} วัน
+              {getPeriodLabel(period)}
             </button>
           ))}
           
-          {/* Month & Year */}
           {['month', 'year'].map((p) => (
             <button
               key={p}
-              className={`period-btn ${selectedPeriod === p ? 'active' : ''}`}
-              onClick={() => setSelectedPeriod(p)}
+              className={`period-btn ${selectedPeriod === p && !useCustomDate ? 'active' : ''}`}
+              onClick={() => handlePeriodClick(p)}
             >
               {getPeriodLabel(p)}
             </button>
           ))}
 
-          {/* All */}
           <button
-            className={`period-btn ${selectedPeriod === 'all' ? 'active' : ''}`}
-            onClick={() => setSelectedPeriod('all')}
+            className={`period-btn ${selectedPeriod === 'all' && !useCustomDate ? 'active' : ''}`}
+            onClick={() => handlePeriodClick('all')}
           >
             ทั้งหมด
           </button>
         </div>
       </div>
 
-      {/* ✅ Custom Days Input */}
+      {/* ✅ Date Range Picker */}
       <div className="bsc-custom-section">
         <div className="bsc-custom-input">
-          <label htmlFor="custom-days">🔍 กำหนดเองจำนวนวัน:</label>
-          <div className="input-group">
-            <input
-              id="custom-days"
-              type="number"
-              min="1"
-              max="365"
-              value={customDays}
-              onChange={handleCustomDaysChange}
-              placeholder="พิมพ์ 2, 5, 10 ..."
-              className="custom-input-field"
-            />
-            <span className="input-suffix">วัน</span>
+          <label>📅 เลือกช่วงวันที่:</label>
+          <div className="date-range-container">
+            <div className="date-input-group">
+              <label htmlFor="start-date" className="date-label">วันเริ่มต้น:</label>
+              <input
+                id="start-date"
+                type="date"
+                name="startDate"
+                value={dateRange.startDate}
+                onChange={handleDateChange}
+                className="date-input-field"
+              />
+            </div>
+
+            <div className="date-separator">→</div>
+
+            <div className="date-input-group">
+              <label htmlFor="end-date" className="date-label">วันสิ้นสุด:</label>
+              <input
+                id="end-date"
+                type="date"
+                name="endDate"
+                value={dateRange.endDate}
+                onChange={handleDateChange}
+                className="date-input-field"
+              />
+            </div>
+
+            {useCustomDate && (dateRange.startDate || dateRange.endDate) && (
+              <button
+                className="clear-date-btn"
+                onClick={handleClearCustomDate}
+                title="ล้างการเลือก"
+              >
+                ✕
+              </button>
+            )}
           </div>
-          {customDays && (
-            <p className="custom-info">แสดงสินค้าขายดี {customDays} วันที่ผ่านมา</p>
+
+          {useCustomDate && dateRange.startDate && dateRange.endDate && (
+            <p className="custom-info">
+              📊 แสดงข้อมูล: <strong>{getSelectedDateLabel()}</strong>
+            </p>
           )}
         </div>
       </div>

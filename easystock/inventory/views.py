@@ -774,42 +774,93 @@ class FestivalViewSet(ModelViewSet):
 
 # ==================== BEST SELLER VIEWSET ====================
 
+# inventory/views.py - BestSellerViewSet class
+# Replace the top_products method completely
+
 class BestSellerViewSet(ModelViewSet):
+    """ViewSet สำหรับจัดการ Best Sellers"""
     queryset = BestSeller.objects.all()
     serializer_class = BestSellerSerializer
     permission_classes = [AllowAny]
 
     @action(detail=False, methods=['get'])
     def top_products(self, request):
+        """ดึง Top N สินค้าขายดี - เรียงตามยอดเบิกจากมากไปน้อย
+        
+        ✅ Filter: เฉพาะสินค้าที่เบิก >= 40 ชิ้น
+        """
         period = request.query_params.get('period', 'month')
         limit = int(request.query_params.get('limit', 10))
+        
+        # ✅ รองรับ custom date range
+        start_date_str = request.query_params.get('start_date')
+        end_date_str = request.query_params.get('end_date')
+        
+        # ✅ Minimum threshold (40 ชิ้น)
+        min_qty = int(request.query_params.get('min_qty', 40))
 
         if limit < 1 or limit > 100:
             limit = 10
 
         today = timezone.now().date()
 
+        # ✅ FIXED - เปลี่ยนให้ '1days' = 24 ชั่วโมงล่าสุด
         period_map = {
             'all': None,
             'year': today - timedelta(days=365),
             'month': today - timedelta(days=30),
+            '1days': timezone.now() - timedelta(hours=24),  # ✅ 24 ชั่วโมงล่าสุด
+            '3days': today - timedelta(days=3),
             '7days': today - timedelta(days=7),
             '30days': today - timedelta(days=30),
         }
 
-        start_date = period_map.get(period)
-
-        if start_date:
-            issue_data = IssueLine.objects.filter(
-                issue__created_at__date__gte=start_date
-            )
+        # ✅ ถ้ามี custom date range ให้ใช้แทน
+        if period == 'custom' and start_date_str and end_date_str:
+            try:
+                from datetime import datetime as dt
+                start_date = dt.strptime(start_date_str, '%Y-%m-%d').date()
+                end_date = dt.strptime(end_date_str, '%Y-%m-%d').date()
+                
+                # เปลี่ยน end_date เป็นสิ้นวันนั้น
+                end_datetime = timezone.make_aware(
+                    dt.combine(end_date, dt.max.time())
+                )
+                start_datetime = timezone.make_aware(
+                    dt.combine(start_date, dt.min.time())
+                )
+                
+                issue_data = IssueLine.objects.filter(
+                    issue__created_at__gte=start_datetime,
+                    issue__created_at__lte=end_datetime
+                )
+            except Exception as e:
+                print(f"Error parsing custom dates: {e}")
+                issue_data = IssueLine.objects.all()
         else:
-            issue_data = IssueLine.objects.all()
+            start_datetime = period_map.get(period)
 
+            if start_datetime:
+                # ✅ ถ้า period = '1days' ใช้ datetime comparison, ไม่เช่นใช้ date
+                if period == '1days':
+                    # ใช้ datetime comparison สำหรับ 24 ชั่วโมง
+                    issue_data = IssueLine.objects.filter(
+                        issue__created_at__gte=start_datetime
+                    )
+                else:
+                    # ใช้ date comparison สำหรับอื่นๆ
+                    issue_data = IssueLine.objects.filter(
+                        issue__created_at__date__gte=start_datetime
+                    )
+            else:
+                issue_data = IssueLine.objects.all()
+
+        # ✅ เรียงลำดับตามยอดเบิก (total_issued) จากมากไปน้อย
+        # ✅ Filter: เฉพาะ total_issued >= min_qty (default 40)
         top_products = issue_data.values('product').annotate(
             total_issued=Sum('qty'),
             transactions=Count('id')
-        ).order_by('-total_issued')[:limit]
+        ).filter(total_issued__gte=min_qty).order_by('-total_issued')[:limit]
 
         results = []
         for idx, tp in enumerate(top_products, 1):
@@ -833,12 +884,14 @@ class BestSellerViewSet(ModelViewSet):
         return Response({
             'period': period,
             'limit': limit,
+            'min_qty': min_qty,
             'count': len(results),
             'results': results
         })
 
     @action(detail=False, methods=['get'])
     def festival_forecast(self, request):
+        """ดึงข้อมูล Festival Forecast สำหรับเทศกาลที่มาถึง"""
         today = timezone.now().date()
 
         upcoming_festival = Festival.objects.filter(
@@ -894,6 +947,7 @@ class BestSellerViewSet(ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def category_analysis(self, request):
+        """วิเคราะห์สินค้าขายดีตามหมวดหมู่"""
         festival_id = request.query_params.get('festival_id')
 
         if not festival_id:
@@ -942,6 +996,7 @@ class BestSellerViewSet(ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def bulk_create(self, request):
+        """สร้าง Best Seller records หลายรายการพร้อมกัน"""
         try:
             festival_id = request.data.get('festival_id')
             best_sellers_data = request.data.get('best_sellers', [])
@@ -984,6 +1039,50 @@ class BestSellerViewSet(ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+    @action(detail=False, methods=['post'])
+    def bulk_create(self, request):
+        """สร้าง Best Seller records หลายรายการพร้อมกัน"""
+        try:
+            festival_id = request.data.get('festival_id')
+            best_sellers_data = request.data.get('best_sellers', [])
+
+            festival = Festival.objects.get(id=festival_id)
+            created_count = 0
+
+            for data in best_sellers_data:
+                try:
+                    product = Product.objects.get(id=data['product_id'])
+                    bs, created = BestSeller.objects.update_or_create(
+                        product=product,
+                        festival=festival,
+                        defaults={
+                            'total_issued': data.get('total_issued', 0),
+                            'rank': data.get('rank', 0),
+                            'last_year_count': data.get('last_year_count', 0),
+                            'this_year_count': data.get('total_issued', 0)
+                        }
+                    )
+                    if created:
+                        created_count += 1
+                except Product.DoesNotExist:
+                    continue
+
+            return Response({
+                'festival_id': festival_id,
+                'created': created_count,
+                'total': len(best_sellers_data)
+            }, status=status.HTTP_201_CREATED)
+
+        except Festival.DoesNotExist:
+            return Response(
+                {'error': 'Festival not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 # ==================== DASHBOARD VIEWSETS ====================
 
