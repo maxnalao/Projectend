@@ -15,11 +15,11 @@ export default function EditListingModal({ open, listing, onClose, onSaved }) {
 
   useEffect(() => {
     if (!listing) return;
-    setTitle(listing.title || listing.name || "");
+    setTitle(listing.title || listing.product_name || listing.name || "");
     setSalePrice(
       listing.sale_price !== null && listing.sale_price !== undefined
         ? listing.sale_price
-        : listing.price ?? ""
+        : listing.selling_price ?? listing.price ?? ""
     );
     setUnit(listing.unit || listing.unit_display || "");
     setQuantity(listing.quantity ?? 0);
@@ -28,6 +28,11 @@ export default function EditListingModal({ open, listing, onClose, onSaved }) {
   }, [listing]);
 
   if (!open || !listing) return null;
+
+  // ✅ ดึงค่าที่ถูกต้องจาก listing
+  const productCode = listing.product_code || listing.code || "-";
+  const productName = listing.product_name || listing.name || listing.title || "สินค้า";
+  const categoryName = listing.category_name || listing.category || "-";
 
   const onSubmit = async (e) => {
     e.preventDefault();
@@ -110,16 +115,18 @@ export default function EditListingModal({ open, listing, onClose, onSaved }) {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">รหัสสินค้า</label>
+                    {/* ✅ FIXED: ใช้ productCode ที่ดึงจาก product_code หรือ code */}
                     <input
-                      value={listing.code}
+                      value={productCode}
                       disabled
-                      className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm bg-gray-50 text-gray-600 cursor-not-allowed"
+                      className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm bg-gray-50 text-gray-600 cursor-not-allowed font-mono font-semibold"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">หมวดหมู่</label>
+                    {/* ✅ FIXED: ใช้ categoryName */}
                     <input
-                      value={listing.category_name ?? ""}
+                      value={categoryName}
                       disabled
                       className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm bg-gray-50 text-gray-600 cursor-not-allowed"
                     />
@@ -145,7 +152,7 @@ export default function EditListingModal({ open, listing, onClose, onSaved }) {
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
                       className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                      placeholder={listing.name || "ชื่อสินค้า"}
+                      placeholder={productName}
                     />
                   </div>
                   <div>
@@ -162,7 +169,7 @@ export default function EditListingModal({ open, listing, onClose, onSaved }) {
                         value={salePrice}
                         onChange={(e) => setSalePrice(e.target.value)}
                         className="w-full border border-gray-300 rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                        placeholder={listing.price || "0.00"}
+                        placeholder={listing.selling_price || listing.price || "0.00"}
                       />
                     </div>
                   </div>

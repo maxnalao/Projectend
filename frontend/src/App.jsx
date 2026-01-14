@@ -8,6 +8,7 @@ import AppLayout from "./layouts/AppLayout.jsx";
 import TaskListPage from "./pages/TaskListPage.jsx";
 import ProfilePage from "./pages/ProfilePage";
 import HistoryPage from "./pages/HistoryPage";
+import AdminFestivalPage from "./pages/AdminFestivalPage.jsx";
 import ProductsPage from "./pages/ProductsPage.jsx";
 import StockPage from "./pages/StockPage.jsx";
 import OverviewPage from "./pages/OverviewPage.jsx";
@@ -15,6 +16,7 @@ import TaskManagementPage from "./pages/TaskManagementPage.jsx";
 import UsersPage from "./pages/UsersPage.jsx";
 import StockReceivePage from "./pages/StockReceivePage.jsx";
 import StockIssuePage from "./pages/StockIssuePage.jsx";
+import EmployeeDashboard from "./pages/EmployeeDashboard.jsx"; // ✅ NEW
 
 // ✅ RequireAuth Component - ตรวจสอบว่า login หรือยัง
 function RequireAuth({ children }) {
@@ -42,6 +44,9 @@ export default function App() {
             {/* ✅ Overview - ใช้ OverviewPage ตัวเดียว (แสดงต่างกันตาม is_staff) */}
             <Route path="overview" element={<OverviewPage />} />
             
+            {/* ✅ Employee Dashboard (NEW) */}
+            <Route path="dashboard" element={<EmployeeDashboard />} />
+            
             {/* Other Routes */}
             <Route path="products" element={<ProductsPage />} />
             <Route path="stock" element={<StockPage />} />
@@ -50,6 +55,7 @@ export default function App() {
             <Route path="task-management" element={<TaskManagementPage />} />
             <Route path="tasks" element={<TaskListPage />} />
             <Route path="stock/issue" element={<StockIssuePage />} />
+            <Route path="festivals" element={<AdminFestivalPage />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route path="line-notifications" element={<LineNotificationPage />} />
             

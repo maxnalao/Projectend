@@ -1,6 +1,7 @@
 # accounts/views.py
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from datetime import timedelta
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -34,48 +35,71 @@ class RegisterView(generics.CreateAPIView):
     authentication_classes = []
 
 
-# ✅ 2. Login (แก้ Error 401 + Update last_login)
+# ✅ 2. Login - อัพเดท is_online = True
 class EmailOrUsernameTokenObtainPairView(TokenObtainPairView):
     serializer_class = EmailOrUsernameTokenObtainPairSerializer
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
     
     def post(self, request, *args, **kwargs):
-        # เรียก parent class เพื่อ Login
         response = super().post(request, *args, **kwargs)
         
-        # ✅ Update last_login เมื่อ Login สำเร็จ
+        # ✅ Update is_online และ last_activity เมื่อ Login สำเร็จ
         if response.status_code == 200:
             login_id = request.data.get('username', '').strip()
             
             try:
-                # หา User
                 if "@" in login_id:
                     user = User.objects.get(email__iexact=login_id)
                 else:
                     user = User.objects.get(username__iexact=login_id)
                 
-                # Update last_login
+                # ✅ Set Online
+                user.is_online = True
                 user.last_login = timezone.now()
-                user.save(update_fields=['last_login'])
+                user.last_activity = timezone.now()
+                user.save(update_fields=['is_online', 'last_login', 'last_activity'])
+                
             except User.DoesNotExist:
                 pass
         
         return response
 
 
-# ✅ 3. Refresh Token
+# ✅ 3. Logout - อัพเดท is_online = False
+class LogoutView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        try:
+            user = request.user
+            user.is_online = False
+            user.save(update_fields=['is_online'])
+            
+            return Response({"detail": "ออกจากระบบสำเร็จ"}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ✅ 4. Refresh Token
 class CustomTokenRefreshView(TokenRefreshView):
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
 
 
+# ✅ 5. Current User - อัพเดท last_activity
 class CurrentUserView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get(self, request):
-        serializer = UserSerializer(request.user, context={'request': request})
+        # ✅ Update last_activity (heartbeat)
+        user = request.user
+        user.last_activity = timezone.now()
+        user.is_online = True
+        user.save(update_fields=['last_activity', 'is_online'])
+        
+        serializer = UserSerializer(user, context={'request': request})
         return Response(serializer.data)
 
     def patch(self, request):
@@ -91,6 +115,20 @@ class CurrentUserView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+# ✅ 6. Heartbeat - Frontend เรียกทุก 30 วินาที
+class HeartbeatView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        user = request.user
+        user.last_activity = timezone.now()
+        user.is_online = True
+        user.save(update_fields=['last_activity', 'is_online'])
+        
+        return Response({"status": "ok", "timestamp": timezone.now()})
+
+
+# ✅ 7. User List - แสดงสถานะ Online/Offline ตามจริง
 class UserListView(generics.ListAPIView):
     queryset = User.objects.all().order_by('-date_joined')
     serializer_class = UserSerializer
@@ -100,8 +138,18 @@ class UserListView(generics.ListAPIView):
         return {'request': self.request}
     
     def list(self, request, *args, **kwargs):
-        from datetime import timedelta
+        users = self.get_queryset()
         
+        # ✅ Auto offline: ถ้าไม่มี activity เกิน 2 นาที
+        now = timezone.now()
+        offline_threshold = now - timedelta(minutes=2)
+        
+        User.objects.filter(
+            is_online=True,
+            last_activity__lt=offline_threshold
+        ).update(is_online=False)
+        
+        # Refresh queryset
         users = self.get_queryset()
         serializer = self.get_serializer(users, many=True)
         
@@ -110,14 +158,8 @@ class UserListView(generics.ListAPIView):
         admin_count = users.filter(is_superuser=True).count()
         staff_count = users.filter(is_superuser=False).count()
         
-        # ✅ แก้ไข: นับเฉพาะคนที่ Login ภายใน 30 นาทีที่ผ่านมา
-        now = timezone.now()
-        active_threshold = now - timedelta(minutes=30)
-        active_count = users.filter(
-            last_login__isnull=False,
-            last_login__gte=active_threshold
-        ).count()
-        
+        # ✅ นับคนที่ Online จริงๆ
+        active_count = users.filter(is_online=True).count()
         inactive_count = users.filter(is_active=False).count()
         
         return Response({
@@ -126,12 +168,13 @@ class UserListView(generics.ListAPIView):
                 'total': total_users,
                 'admin': admin_count,
                 'staff': staff_count,
-                'active': active_count,  # ✅ คนที่ Login อยู่จริง
+                'active': active_count,
                 'inactive': inactive_count,
             }
         })
 
 
+# ✅ 8. User Detail
 class UserDetailView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsAdminUser]
     parser_classes = [MultiPartParser, FormParser, JSONParser]

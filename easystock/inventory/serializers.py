@@ -1,6 +1,7 @@
 # inventory/serializers.py (COMPLETE - ALL SERIALIZERS)
 
 from rest_framework import serializers
+from .models import CustomEvent
 from django.contrib.auth import get_user_model
 from .models import Product, Category, Listing, Festival, BestSeller, FestivalForecast, ForecastProduct, Task
 
@@ -336,3 +337,46 @@ class TaskSerializer(serializers.ModelSerializer):
     
     def get_days_until_due(self, obj):
         return obj.days_until_due
+
+
+
+class CustomEventSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.SerializerMethodField()
+    type = serializers.CharField(source='event_type', required=False)
+    priority_display = serializers.CharField(source='get_priority_display', read_only=True)
+    
+    class Meta:
+        model = CustomEvent
+        fields = [
+            'id', 
+            'title', 
+            'date', 
+            'event_type',
+            'type',  # alias สำหรับ frontend
+            'priority',
+            'priority_display',
+            'notes', 
+            'is_shared',
+            'created_by',
+            'created_by_name',
+            'created_at',
+            'updated_at'
+        ]
+        read_only_fields = ['id', 'created_by', 'created_by_name', 'created_at', 'updated_at']
+    
+    def get_created_by_name(self, obj):
+        if obj.created_by:
+            return obj.created_by.get_full_name() or obj.created_by.username
+        return None
+    
+    def create(self, validated_data):
+        # ดึง event_type จาก type ถ้ามี
+        if 'event_type' not in validated_data and 'type' in self.initial_data:
+            validated_data['event_type'] = self.initial_data['type']
+        
+        # กำหนด created_by เป็น user ปัจจุบัน
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            validated_data['created_by'] = request.user
+        
+        return super().create(validated_data)

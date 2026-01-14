@@ -1,11 +1,17 @@
+# accounts/models.py
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from django.utils import timezone
 
 
 class User(AbstractUser):
     profile_image = models.ImageField(upload_to='profiles/', null=True, blank=True)
+    
+    # ✅ เพิ่มสำหรับ Real-time Online Status
+    is_online = models.BooleanField(default=False)
+    last_activity = models.DateTimeField(null=True, blank=True)
     
     groups = models.ManyToManyField(
         'auth.Group',
@@ -25,9 +31,26 @@ class User(AbstractUser):
     
     def __str__(self):
         return self.username
+    
+    def set_online(self):
+        """Set user as online"""
+        self.is_online = True
+        self.last_activity = timezone.now()
+        self.save(update_fields=['is_online', 'last_activity'])
+    
+    def set_offline(self):
+        """Set user as offline"""
+        self.is_online = False
+        self.save(update_fields=['is_online'])
+    
+    def update_activity(self):
+        """Update last activity timestamp"""
+        self.last_activity = timezone.now()
+        self.is_online = True
+        self.save(update_fields=['last_activity', 'is_online'])
 
 
-# ✅ เพิ่ม Model นี้สำหรับ LINE Notification
+# ✅ Model สำหรับ LINE Notification
 class NotificationSettings(models.Model):
     user = models.OneToOneField(
         User, 
@@ -47,7 +70,7 @@ class NotificationSettings(models.Model):
         return f"Settings for {self.user.username}"
 
 
-# ✅ เพิ่ม Model นี้สำหรับ User Roles (Admin/Employee)
+# ✅ Model สำหรับ User Roles (Admin/Employee)
 class UserProfile(models.Model):
     """User profile to store role"""
     
@@ -82,11 +105,9 @@ class UserProfile(models.Model):
         return f"{self.user.username} ({self.get_role_display()})"
     
     def is_admin(self):
-        """Check if user is admin"""
         return self.role == 'admin'
     
     def is_employee(self):
-        """Check if user is employee"""
         return self.role == 'employee'
 
 
@@ -94,12 +115,10 @@ class UserProfile(models.Model):
 
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):
-    """Create UserProfile when User is created"""
     if created:
         UserProfile.objects.get_or_create(user=instance)
 
 @receiver(post_save, sender=User)
 def save_user_profile(sender, instance, **kwargs):
-    """Save UserProfile when User is saved"""
     if hasattr(instance, 'profile'):
         instance.profile.save()

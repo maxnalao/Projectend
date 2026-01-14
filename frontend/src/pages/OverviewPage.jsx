@@ -110,7 +110,7 @@ export default function OverviewPage() {
           </div>
         </div>
 
-        {/* Card 2: Low Stock Items */}
+        {/* Card 2: Low Stock Items - ✅ แก้ไอคอนใหม่ */}
         <div className="bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl shadow-md p-5 flex items-center justify-between transition-transform hover:scale-[1.02]">
           <div>
             <p className="text-amber-100 text-xs font-medium uppercase tracking-wider">สินค้าใกล้หมด</p>
@@ -118,7 +118,10 @@ export default function OverviewPage() {
             <p className="text-amber-100 text-xs mt-1">สต็อกต่ำกว่า 5 ชิ้น</p>
           </div>
           <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-md">
-            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4v2m0 4v2m0-4v2m0-2v2m0-2v2m0-2v2m0-6V9m0 0V5m0 4v2m0-2v2" /></svg>
+            {/* ✅ ไอคอนเตือนใหม่ - รูปกล่องพร้อมเครื่องหมายตกใจ */}
+            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
           </div>
         </div>
 
@@ -130,7 +133,10 @@ export default function OverviewPage() {
             <p className="text-emerald-100 text-xs mt-1">ชิ้น</p>
           </div>
           <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-md">
-            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" /></svg>
+            {/* ✅ ไอคอนรับสินค้าเข้า - ลูกศรชี้ลง */}
+            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
           </div>
         </div>
 
@@ -142,7 +148,10 @@ export default function OverviewPage() {
             <p className="text-rose-100 text-xs mt-1">ชิ้น</p>
           </div>
           <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-md">
-            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+            {/* ✅ ไอคอนเบิกสินค้าออก - ลูกศรชี้ขึ้น */}
+            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+            </svg>
           </div>
         </div>
       </div>

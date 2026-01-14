@@ -23,6 +23,9 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     profile_image = serializers.ImageField(required=False, allow_null=True)
+    # ✅ เพิ่ม is_online และ last_activity
+    is_online = serializers.BooleanField(read_only=True)
+    last_activity = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = User
@@ -30,11 +33,12 @@ class UserSerializer(serializers.ModelSerializer):
             "id", "username", "email",
             "first_name", "last_name",
             "profile_image",
-            "is_staff", "is_superuser", "is_active",  # ✅ เพิ่ม is_active
+            "is_staff", "is_superuser", "is_active",
+            "is_online",        # ✅ เพิ่ม
+            "last_activity",    # ✅ เพิ่ม
             "date_joined", "last_login",
         ]
-        # ✅ แก้ไข: ลบ is_staff และ is_superuser ออกจาก read_only
-        read_only_fields = ["id", "date_joined", "last_login"]
+        read_only_fields = ["id", "date_joined", "last_login", "is_online", "last_activity"]
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)

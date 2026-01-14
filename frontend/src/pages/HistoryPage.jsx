@@ -255,12 +255,14 @@ export default function HistoryPage() {
                 <th className="px-6 py-4 text-left font-semibold text-gray-700">สินค้า</th>
                 <th className="px-6 py-4 text-center font-semibold text-gray-700">ประเภท</th>
                 <th className="px-6 py-4 text-right font-semibold text-gray-700">จำนวน</th>
+                {/* ✅ เพิ่มคอลัมน์ผู้ดำเนินการ */}
+                <th className="px-6 py-4 text-left font-semibold text-gray-700">ผู้ดำเนินการ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-16 text-center">
+                  <td colSpan={6} className="px-6 py-16 text-center">
                     <div className="flex flex-col items-center justify-center">
                       <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
                       <p className="text-gray-500 font-medium">กำลังโหลดข้อมูล...</p>
@@ -270,7 +272,7 @@ export default function HistoryPage() {
                 </tr>
               ) : data.movements.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-16 text-center">
+                  <td colSpan={6} className="px-6 py-16 text-center">
                     <div className="flex flex-col items-center justify-center">
                       <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
                         <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -319,6 +321,36 @@ export default function HistoryPage() {
                     <td className="px-6 py-4 text-right">
                       <span className="font-bold text-gray-800 text-lg">{mv.qty}</span>
                       <span className="text-sm text-gray-500 ml-1">{mv.unit}</span>
+                    </td>
+                    {/* ✅ คอลัมน์ผู้ดำเนินการ พร้อมรูปโปรไฟล์ */}
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        {/* รูปโปรไฟล์ */}
+                        {mv.profile_image ? (
+                          <img 
+                            src={mv.profile_image} 
+                            alt={mv.created_by_name || 'User'} 
+                            className="w-9 h-9 rounded-full object-cover border-2 border-white shadow-sm"
+                          />
+                        ) : (
+                          <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-sm ${
+                            mv.created_by_name && mv.created_by_name !== 'ไม่ระบุ' 
+                              ? 'bg-gradient-to-br from-blue-500 to-indigo-600' 
+                              : 'bg-gray-400'
+                          }`}>
+                            {mv.created_by_name ? mv.created_by_name.charAt(0).toUpperCase() : '?'}
+                          </div>
+                        )}
+                        {/* ชื่อและ username */}
+                        <div>
+                          <p className="text-sm font-medium text-gray-800">
+                            {mv.created_by_name || 'ไม่ระบุ'}
+                          </p>
+                          {mv.created_by_username && mv.created_by_username !== mv.created_by_name && (
+                            <p className="text-xs text-gray-500">@{mv.created_by_username}</p>
+                          )}
+                        </div>
+                      </div>
                     </td>
                   </tr>
                 ))

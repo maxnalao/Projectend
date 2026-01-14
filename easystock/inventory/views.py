@@ -1,6 +1,7 @@
 # inventory/views.py - เปลี่ยนบรรทัด import ให้เป็นแบบนี้
 
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
+from rest_framework import viewsets, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser 
 from rest_framework.decorators import api_view, permission_classes, action
@@ -8,6 +9,9 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.db import transaction
 from django.utils import timezone
+from django.db.models import Q
+from .models import CustomEvent
+from .serializers import CustomEventSerializer
 from django.contrib.auth import get_user_model  # ← เปลี่ยนเป็นแบบนี้
 from django.db.models import Sum, Count, F, Q
 from django.core.exceptions import ObjectDoesNotExist
@@ -478,63 +482,143 @@ def dashboard_stats(request):
     })
 
 
-@api_view(["GET"])
-@permission_classes([AllowAny])
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def movement_history(request):
+    """
+    ✅ API ดึงประวัติการเคลื่อนไหวสินค้า (รับเข้า + เบิกออก)
+    พร้อมข้อมูลผู้ดำเนินการ + รูปโปรไฟล์
+    """
+    from django.db.models import Q
+    from .models import Issue, IssueLine, Product
+    
+    # Get filters
     search = request.query_params.get('search', '')
-    start_date = request.query_params.get('start_date')
-    end_date = request.query_params.get('end_date')
+    start_date = request.query_params.get('start_date', '')
+    end_date = request.query_params.get('end_date', '')
     movement_type = request.query_params.get('type', 'all')
-    limit = int(request.query_params.get('limit', 100))
+    limit = int(request.query_params.get('limit', 50))
     
-    all_movements = []
+    movements = []
     
+    # ✅ Helper function สำหรับดึง profile image URL
+    def get_profile_image_url(user):
+        if not user:
+            return None
+        # ถ้า user model มี profile_image field
+        if hasattr(user, 'profile_image') and user.profile_image:
+            return request.build_absolute_uri(user.profile_image.url)
+        # ถ้ามี profile model แยก
+        if hasattr(user, 'profile') and hasattr(user.profile, 'image') and user.profile.image:
+            return request.build_absolute_uri(user.profile.image.url)
+        # ถ้ามี avatar field
+        if hasattr(user, 'avatar') and user.avatar:
+            return request.build_absolute_uri(user.avatar.url)
+        return None
+    
+    # ดึงข้อมูลการเบิก (Issue) - type = 'out'
     if movement_type in ['all', 'out']:
-        issued_qs = IssueLine.objects.select_related('issue', 'product')
-        if search: issued_qs = issued_qs.filter(Q(product__name__icontains=search) | Q(product__code__icontains=search))
-        if start_date: 
-            try: issued_qs = issued_qs.filter(issue__created_at__date__gte=datetime.strptime(start_date, '%Y-%m-%d').date())
-            except ValueError: pass
-        if end_date:
-            try: issued_qs = issued_qs.filter(issue__created_at__date__lte=datetime.strptime(end_date, '%Y-%m-%d').date())
-            except ValueError: pass
-        for line in issued_qs.order_by('-issue__created_at'):
-            all_movements.append({'id': f'out_{line.id}', 'date': line.issue.created_at.isoformat(), 'code': line.product.code, 'name': line.product.name, 'type': 'out', 'qty': line.qty, 'unit': line.product.unit})
-    
-    if movement_type in ['all', 'in']:
-        received_qs = Product.objects.filter(is_deleted=False)
-        if search: received_qs = received_qs.filter(Q(name__icontains=search) | Q(code__icontains=search))
+        issues = Issue.objects.select_related('created_by').prefetch_related('lines__product').order_by('-created_at')
+        
         if start_date:
-            try: received_qs = received_qs.filter(created_at__date__gte=datetime.strptime(start_date, '%Y-%m-%d').date())
-            except ValueError: pass
+            issues = issues.filter(created_at__date__gte=start_date)
         if end_date:
-            try: received_qs = received_qs.filter(created_at__date__lte=datetime.strptime(end_date, '%Y-%m-%d').date())
-            except ValueError: pass
-        for p in received_qs.order_by('-created_at'):
-            all_movements.append({'id': f'in_{p.id}', 'date': p.created_at.isoformat(), 'code': p.code, 'name': p.name, 'type': 'in', 'qty': p.initial_stock or p.stock, 'unit': p.unit})
+            issues = issues.filter(created_at__date__lte=end_date)
+        
+        for issue in issues:
+            for line in issue.lines.all():
+                if search and search.lower() not in line.product.name.lower() and search.lower() not in line.product.code.lower():
+                    continue
+                
+                user = issue.created_by
+                movements.append({
+                    'id': f'out-{issue.id}-{line.id}',
+                    'date': issue.created_at.isoformat(),
+                    'code': line.product.code,
+                    'name': line.product.name,
+                    'type': 'out',
+                    'qty': line.qty,
+                    'unit': line.product.unit,
+                    # ✅ ข้อมูลผู้ดำเนินการ
+                    'created_by_name': user.get_full_name() or user.username if user else 'ไม่ระบุ',
+                    'created_by_username': user.username if user else None,
+                    'profile_image': get_profile_image_url(user),  # ✅ เพิ่มรูปโปรไฟล์
+                })
     
-    all_movements.sort(key=lambda x: x['date'], reverse=True)
-    return Response({'movements': all_movements[:limit], 'total': len(all_movements), 'showing': len(all_movements[:limit])})
-
+    # ดึงข้อมูลการรับเข้า - type = 'in'
+    if movement_type in ['all', 'in']:
+        products = Product.objects.filter(
+            is_deleted=False,
+            initial_stock__gt=0
+        ).order_by('-created_at')
+        
+        # ถ้า Product มี created_by field
+        if hasattr(Product, 'created_by'):
+            products = products.select_related('created_by')
+        
+        if search:
+            products = products.filter(
+                Q(name__icontains=search) | Q(code__icontains=search)
+            )
+        
+        if start_date:
+            products = products.filter(created_at__date__gte=start_date)
+        if end_date:
+            products = products.filter(created_at__date__lte=end_date)
+        
+        for product in products:
+            user = getattr(product, 'created_by', None)
+            movements.append({
+                'id': f'in-{product.id}',
+                'date': product.created_at.isoformat(),
+                'code': product.code,
+                'name': product.name,
+                'type': 'in',
+                'qty': product.initial_stock,
+                'unit': product.unit,
+                # ✅ ข้อมูลผู้ดำเนินการ
+                'created_by_name': user.get_full_name() or user.username if user else 'ไม่ระบุ',
+                'created_by_username': user.username if user else None,
+                'profile_image': get_profile_image_url(user),  # ✅ เพิ่มรูปโปรไฟล์
+            })
+    
+    # เรียงตามวันที่ล่าสุด
+    movements.sort(key=lambda x: x['date'], reverse=True)
+    
+    total = len(movements)
+    movements = movements[:limit]
+    
+    return Response({
+        'movements': movements,
+        'total': total,
+        'showing': len(movements)
+    })
 
 # ==================== LINE MESSAGING API ====================
 
 @csrf_exempt
-@api_view(['POST'])
-@permission_classes([AllowAny])
 def line_webhook(request):
+    """รับ webhook จาก LINE"""
+    print("🔥 WEBHOOK CALLED!")
+    
     if not LINE_AVAILABLE: 
         return HttpResponseBadRequest("LINE SDK not available")
+    
+    if request.method != 'POST':
+        return HttpResponseBadRequest("Only POST allowed")
     
     signature = request.META.get('HTTP_X_LINE_SIGNATURE', '')
     body = request.body.decode('utf-8')
     
+    print(f"📩 Body: {body[:200]}")
+    
     try:
         line_service.handler.handle(body, signature)
-    except InvalidSignatureError: 
+    except InvalidSignatureError:
+        print("❌ Invalid signature")
         return HttpResponseBadRequest("Invalid signature")
     except Exception as e:
-        logger.error(f"Webhook error: {e}")
+        print(f"❌ Webhook error: {e}")
         return HttpResponseBadRequest()
     
     return HttpResponse('OK')
@@ -543,9 +627,13 @@ def line_webhook(request):
 if LINE_AVAILABLE and line_service:
     @line_service.handler.add(MessageEvent, message=TextMessage)
     def handle_text_message(event):
+        print("📩 MESSAGE RECEIVED!")  # เพิ่มบรรทัดนี้
+        print(f"Text: {event.message.text}")  # เพิ่มบรรทัดนี้
+        print(f"User ID: {event.source.user_id}")  # เพิ่มบรรทัดนี้
         user_id = event.source.user_id
         text = event.message.text.strip()
         
+        # ✅ Case 1: รหัส 6 หลัก (เดิม)
         if len(text) == 6 and text.isdigit():
             try:
                 settings_obj = NotificationSettings.objects.get(verification_code=text)
@@ -564,23 +652,79 @@ if LINE_AVAILABLE and line_service:
                 )
             return
 
-        triggers = ['ขอรหัส', 'รหัส', 'code', 'id', 'userid', 'help', 'ช่วย', 'เชื่อม']
+        # ✅ Case 2: เชื่อม [username] - ใหม่!
+        if text.startswith('เชื่อม ') or text.startswith('เชื่อม'):
+            # ดึง username จากข้อความ
+            parts = text.split(maxsplit=1)
+            if len(parts) == 2:
+                username = parts[1].strip()
+                
+                try:
+                    # หา user จาก username
+                    target_user = User.objects.get(username=username)
+                    
+                    # สร้างหรือดึง NotificationSettings
+                    settings_obj, created = NotificationSettings.objects.get_or_create(
+                        user=target_user
+                    )
+                    
+                    # บันทึก LINE User ID
+                    settings_obj.line_user_id = user_id
+                    settings_obj.verification_code = None
+                    settings_obj.save()
+                    
+                    # ดึง profile เพื่อแสดงชื่อ
+                    display_name = "คุณ"
+                    try:
+                        profile = line_service.line_bot_api.get_profile(user_id)
+                        display_name = profile.display_name
+                    except:
+                        pass
+                    
+                    line_service.send_text_message(
+                        user_id,
+                        f"""✅ เชื่อมต่อสำเร็จ!
+
+สวัสดี คุณ {display_name} 😊
+นี่คือบัญชีทางการของ ร้านทองศูนย์
+
+เราจะส่งข่าวสารล่าสุดผ่านบัญชีทางการนี้เป็นระยะ ❤️
+เตรียมรับได้เลย! 🎁🎉✨
+
+📱 บัญชี: {target_user.username}
+🔔 ระบบพร้อมแจ้งเตือนแล้ว!"""
+                    )
+                    return
+                    
+                except User.DoesNotExist:
+                    line_service.send_text_message(
+                        user_id,
+                        f"❌ ไม่พบผู้ใช้ '{username}' ในระบบ\nกรุณาตรวจสอบ username อีกครั้ง"
+                    )
+                    return
+            else:
+                line_service.send_text_message(
+                    user_id,
+                    "📝 กรุณาพิมพ์: เชื่อม [username]\nตัวอย่าง: เชื่อม maxnalao11"
+                )
+                return
+
+        # ✅ Case 3: ขอรหัส/ช่วยเหลือ
+        triggers = ['ขอรหัส', 'รหัส', 'code', 'id', 'userid', 'help', 'ช่วย']
         
         if any(keyword in text.lower() for keyword in triggers):
             msg = (
                 f"🆔 User ID ของคุณคือ:\n{user_id}\n\n"
                 "📋 วิธีเชื่อมต่อระบบ:\n"
-                "1. เปิดหน้าเว็บ 'การแจ้งเตือน LINE'\n"
-                "2. นำรหัสตัวเลข 6 หลักที่เห็นบนเว็บ\n"
-                "3. พิมพ์ส่งมาในแชทนี้ได้เลยครับ"
+                "พิมพ์: เชื่อม [username ของคุณ]\n"
+                "ตัวอย่าง: เชื่อม maxnalao11"
             )
             line_service.send_text_message(user_id, msg)
         else:
             line_service.send_text_message(
                 user_id, 
-                "สวัสดีครับ! กรุณาพิมพ์ 'รหัส 6 หลัก' จากหน้าเว็บไซต์ส่งมาเพื่อเชื่อมต่อระบบครับ"
+                "สวัสดีครับ! 👋\n\nวิธีเชื่อมต่อระบบ:\nพิมพ์: เชื่อม [username]\nตัวอย่าง: เชื่อม maxnalao11"
             )
-
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -613,6 +757,136 @@ def get_line_user_id(request):
     except NotificationSettings.DoesNotExist:
         return Response({"has_user_id": False, "masked_user_id": ""})
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_connected_users(request):
+    """ดึงรายชื่อผู้ใช้ทั้งหมดที่เชื่อมต่อ LINE แล้ว"""
+    try:
+        # ดึง NotificationSettings ที่มี line_user_id
+        connected_settings = NotificationSettings.objects.filter(
+            line_user_id__isnull=False
+        ).exclude(line_user_id='').select_related('user')
+        
+        users = []
+        for setting in connected_settings:
+            user_data = {
+                'id': setting.user.id,
+                'username': setting.user.username,
+                'email': setting.user.email,
+                'display_name': None,
+                'picture_url': None,
+                'connected_at': setting.updated_at.isoformat() if hasattr(setting, 'updated_at') else None
+            }
+            
+            # ดึง LINE Profile ถ้าได้
+            if LINE_AVAILABLE and line_service:
+                try:
+                    profile_result = line_service.get_profile(setting.line_user_id)
+                    if profile_result.get('success'):
+                        user_data['display_name'] = profile_result['data'].get('display_name')
+                        user_data['picture_url'] = profile_result['data'].get('picture_url')
+                except Exception as e:
+                    print(f"Error getting profile for {setting.user.username}: {e}")
+            
+            # ถ้าไม่มี display_name ใช้ชื่อ user แทน
+            if not user_data['display_name']:
+                user_data['display_name'] = setting.user.get_full_name() or setting.user.username
+            
+            users.append(user_data)
+        
+        return Response({
+            'count': len(users),
+            'users': users
+        })
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def send_to_selected_users(request):
+    """ส่งข้อความไปยังผู้ใช้ที่เลือก"""
+    if not LINE_AVAILABLE or not line_service:
+        return Response({"error": "LINE service unavailable"}, status=503)
+    
+    user_ids = request.data.get('user_ids', [])
+    message = request.data.get('message', '🔔 ข้อความจากระบบ EasyStock')
+    
+    if not user_ids:
+        return Response({"error": "No users selected"}, status=400)
+    
+    sent_count = 0
+    failed_count = 0
+    errors = []
+    
+    for user_id in user_ids:
+        try:
+            # หา NotificationSettings ของ user
+            setting = NotificationSettings.objects.get(user_id=user_id)
+            
+            if setting.line_user_id:
+                result = line_service.send_text_message(setting.line_user_id, message)
+                if result.get('success'):
+                    sent_count += 1
+                else:
+                    failed_count += 1
+                    errors.append(f"User {user_id}: {result.get('error')}")
+            else:
+                failed_count += 1
+                errors.append(f"User {user_id}: No LINE ID")
+                
+        except NotificationSettings.DoesNotExist:
+            failed_count += 1
+            errors.append(f"User {user_id}: Settings not found")
+        except Exception as e:
+            failed_count += 1
+            errors.append(f"User {user_id}: {str(e)}")
+    
+    return Response({
+        'success': True,
+        'sent_count': sent_count,
+        'failed_count': failed_count,
+        'errors': errors if errors else None
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def broadcast_message(request):
+    """ส่งข้อความถึงทุกคนที่เชื่อมต่อ LINE"""
+    if not LINE_AVAILABLE or not line_service:
+        return Response({"error": "LINE service unavailable"}, status=503)
+    
+    message = request.data.get('message')
+    
+    if not message:
+        return Response({"error": "Message is required"}, status=400)
+    
+    # ดึงทุกคนที่มี LINE User ID
+    connected_settings = NotificationSettings.objects.filter(
+        line_user_id__isnull=False
+    ).exclude(line_user_id='')
+    
+    sent_count = 0
+    failed_count = 0
+    
+    for setting in connected_settings:
+        try:
+            result = line_service.send_text_message(setting.line_user_id, message)
+            if result.get('success'):
+                sent_count += 1
+            else:
+                failed_count += 1
+        except Exception as e:
+            failed_count += 1
+            print(f"Broadcast error for user {setting.user.username}: {e}")
+    
+    return Response({
+        'success': True,
+        'sent_count': sent_count,
+        'failed_count': failed_count,
+        'total': connected_settings.count()
+    })
 
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
@@ -727,6 +1001,11 @@ class FestivalViewSet(ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def calendar(self, request):
+        """
+        ✅ UPDATED: Removed 2-day warning notification
+        Get festivals for a specific month (calendar view)
+        Query params: year, month
+        """
         year = int(request.query_params.get('year', timezone.now().year))
         month = int(request.query_params.get('month', timezone.now().month))
 
@@ -736,18 +1015,49 @@ class FestivalViewSet(ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Get first and last day of the month
+        first_day = datetime(year, month, 1).date()
+        if month == 12:
+            last_day = datetime(year + 1, 1, 1).date() - timedelta(days=1)
+        else:
+            last_day = datetime(year, month + 1, 1).date() - timedelta(days=1)
+
+        # ✅ FIXED: Get festivals that overlap with this month
+        # (not just festivals starting in this month)
         festivals = Festival.objects.filter(
-            start_date__year=year,
-            start_date__month=month
+            start_date__lte=last_day,  # Festival started on or before last day
+            end_date__gte=first_day     # Festival ended on or after first day
         ).order_by('start_date')
 
         serializer = self.get_serializer(festivals, many=True)
+        
         return Response({
             'year': year,
             'month': month,
-            'month_name': datetime(year, month, 1).strftime('%B'),
+            'month_name': first_day.strftime('%B'),
             'festivals': serializer.data,
             'count': festivals.count()
+        })
+
+    @action(detail=False, methods=['get'])
+    def with_best_sellers(self, request):
+        festivals = Festival.objects.prefetch_related('best_sellers').all()
+        serializer = self.get_serializer(festivals, many=True)
+        return Response({
+            'count': festivals.count(),
+            'results': serializer.data
+        })
+
+    @action(detail=True, methods=['get'])
+    def best_sellers(self, request, pk=None):
+        festival = self.get_object()
+        best_sellers = BestSeller.objects.filter(festival=festival).order_by('rank')
+
+        serializer = BestSellerDetailSerializer(best_sellers, many=True)
+        return Response({
+            'festival': FestivalSerializer(festival).data,
+            'best_sellers': serializer.data,
+            'count': best_sellers.count()
         })
 
     @action(detail=False, methods=['get'])
@@ -797,7 +1107,7 @@ class BestSellerViewSet(ModelViewSet):
         end_date_str = request.query_params.get('end_date')
         
         # ✅ Minimum threshold (40 ชิ้น)
-        min_qty = int(request.query_params.get('min_qty', 40))
+        min_qty = int(request.query_params.get('min_qty', 25))
 
         if limit < 1 or limit > 100:
             limit = 10
@@ -810,9 +1120,7 @@ class BestSellerViewSet(ModelViewSet):
             'year': today - timedelta(days=365),
             'month': today - timedelta(days=30),
             '1days': timezone.now() - timedelta(hours=24),  # ✅ 24 ชั่วโมงล่าสุด
-            '3days': today - timedelta(days=3),
             '7days': today - timedelta(days=7),
-            '30days': today - timedelta(days=30),
         }
 
         # ✅ ถ้ามี custom date range ให้ใช้แทน
@@ -1194,3 +1502,91 @@ class AdminDashboardViewSet(ModelViewSet):
         return Response({
             'top_products': list(top_products)
         })
+    
+
+class CustomEventViewSet(viewsets.ModelViewSet):
+    """
+    API สำหรับจัดการบันทึกของฉัน (Custom Events)
+    
+    GET /custom-events/ - ดูรายการทั้งหมด
+    POST /custom-events/ - สร้างใหม่
+    GET /custom-events/{id}/ - ดูรายละเอียด
+    PUT /custom-events/{id}/ - แก้ไข
+    DELETE /custom-events/{id}/ - ลบ
+    GET /custom-events/my_events/ - ดูเฉพาะของตัวเอง
+    GET /custom-events/calendar/ - ดูตามเดือน/ปี
+    """
+    
+    serializer_class = CustomEventSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """
+        แสดง events ที่:
+        1. เป็นของตัวเอง (created_by = current user)
+        2. หรือ แชร์ให้ทุกคน (is_shared = True)
+        """
+        user = self.request.user
+        return CustomEvent.objects.filter(
+            Q(created_by=user) | Q(is_shared=True)
+        ).distinct()
+    
+    def perform_create(self, serializer):
+        """บันทึก created_by เป็น user ปัจจุบัน"""
+        serializer.save(created_by=self.request.user)
+    
+    def perform_update(self, serializer):
+        """เช็คว่าเป็นเจ้าของก่อนแก้ไข"""
+        instance = self.get_object()
+        if instance.created_by != self.request.user and not self.request.user.is_staff:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("คุณไม่มีสิทธิ์แก้ไขรายการนี้")
+        serializer.save()
+    
+    def perform_destroy(self, instance):
+        """เช็คว่าเป็นเจ้าของก่อนลบ"""
+        if instance.created_by != self.request.user and not self.request.user.is_staff:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("คุณไม่มีสิทธิ์ลบรายการนี้")
+        instance.delete()
+    
+    @action(detail=False, methods=['get'])
+    def my_events(self, request):
+        """GET /custom-events/my_events/ - ดูเฉพาะของตัวเอง"""
+        queryset = CustomEvent.objects.filter(created_by=request.user)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def calendar(self, request):
+        """
+        GET /custom-events/calendar/?year=2026&month=1
+        ดู events ตามเดือน/ปี
+        """
+        year = request.query_params.get('year')
+        month = request.query_params.get('month')
+        
+        queryset = self.get_queryset()
+        
+        if year:
+            queryset = queryset.filter(date__year=year)
+        if month:
+            queryset = queryset.filter(date__month=month)
+        
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            'year': year,
+            'month': month,
+            'events': serializer.data,
+            'count': queryset.count()
+        })
+    
+    @action(detail=False, methods=['get'])
+    def upcoming(self, request):
+        """GET /custom-events/upcoming/ - ดู events ที่กำลังจะมาถึง"""
+        from django.utils import timezone
+        today = timezone.now().date()
+        
+        queryset = self.get_queryset().filter(date__gte=today).order_by('date')[:10]
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)

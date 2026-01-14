@@ -227,7 +227,7 @@ export default function ProductsPage() {
 
       {/* ✅ Total Inventory Value - Text Only */}
       <div className="text-center">
-        <p className="text-gray-600 text-sm font-medium">รวมมูลค่าสต๊อก</p>
+        <p className="text-gray-600 text-sm font-medium">รวมมูลค่าสินค้า</p>
         <p className="text-gray-800 text-2xl font-bold mt-1">฿{totalInventoryValue.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
       </div>
 

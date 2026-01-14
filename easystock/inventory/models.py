@@ -141,6 +141,19 @@ class Festival(models.Model):
         default='#FF6B6B',
         help_text="สีสำหรับแสดงบน Calendar (#RRGGBB)"
     )
+    
+    # ✅ NEW FIELDS - หมายเหตุ & เตรียมของสต๊อก
+    notes = models.TextField(
+        null=True,
+        blank=True,
+        help_text="หมายเหตุ/แจ้งเตือนให้พนักงาน"
+    )
+    preparation_tasks = models.TextField(
+        null=True,
+        blank=True,
+        help_text="รายการสิ่งที่ต้องเตรียม (แยกด้วย ,)"
+    )
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -499,3 +512,63 @@ class Task(models.Model):
         elif self.status != 'completed':
             self.completed_at = None
         super().save(*args, **kwargs)
+
+# เพิ่มใน models.py (ไฟล์ที่มี Festival model อยู่แล้ว)
+
+# เพิ่มใน models.py - แก้ไข CustomEvent ให้ใช้ settings.AUTH_USER_MODEL
+
+class CustomEvent(models.Model):
+    """บันทึกของฉัน - เก็บในฐานข้อมูลแทน localStorage"""
+    
+    EVENT_TYPES = [
+        ('stock_order', 'สั่งซื้อสินค้า'),
+        ('promotion', 'จัดโปรโมชั่น'),
+        ('delivery', 'รับ/ส่งสินค้า'),
+        ('meeting', 'ประชุม/นัดหมาย'),
+        ('other', 'อื่นๆ'),
+    ]
+    
+    PRIORITY_CHOICES = [
+        ('low', 'ต่ำ'),
+        ('medium', 'ปกติ'),
+        ('high', 'สูง'),
+        ('urgent', 'ด่วน'),
+    ]
+    
+    title = models.CharField(max_length=200, verbose_name="ชื่อ")
+    date = models.DateField(verbose_name="วันที่")
+    event_type = models.CharField(
+        max_length=20, 
+        choices=EVENT_TYPES, 
+        default='stock_order',  # ✅ แก้จาก stock_check เป็น stock_order
+        verbose_name="ประเภท"
+    )
+    priority = models.CharField(
+        max_length=20,
+        choices=PRIORITY_CHOICES,
+        default='medium',
+        verbose_name="ระดับความสำคัญ"
+    )
+    notes = models.TextField(blank=True, null=True, verbose_name="หมายเหตุ")
+    
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='custom_events',
+        verbose_name="สร้างโดย",
+        null=True,
+        blank=True
+    )
+    
+    is_shared = models.BooleanField(default=True, verbose_name="แชร์ให้ทุกคน")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "บันทึกของฉัน"
+        verbose_name_plural = "บันทึกของฉัน"
+        ordering = ['-priority', 'date', '-created_at']
+    
+    def __str__(self):
+        return f"[{self.get_priority_display()}] {self.title} ({self.date})"

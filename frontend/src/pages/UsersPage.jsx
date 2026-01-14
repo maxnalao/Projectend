@@ -1,5 +1,5 @@
 // src/pages/UsersPage.jsx
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import api from "../api";
 
 export default function UsersPage() {
@@ -20,12 +20,9 @@ export default function UsersPage() {
     is_superuser: false,
   });
 
-  useEffect(() => {
-    loadUsers();
-  }, []);
-
-  const loadUsers = async () => {
-    setLoading(true);
+  // ✅ Load users function (reusable)
+  const loadUsers = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const { data } = await api.get("/auth/users/");
       
@@ -34,26 +31,46 @@ export default function UsersPage() {
         calculateStats(data);
       } else if (data.users && Array.isArray(data.users)) {
         setUsers(data.users);
-        setStats(data.stats || calculateStats(data.users));
+        if (data.stats) {
+          setStats(data.stats);
+        } else {
+          calculateStats(data.users);
+        }
       } else {
         console.error("Unexpected API response format:", data);
         setUsers([]);
       }
     } catch (err) {
       console.error("Load users error:", err);
-      alert("ไม่สามารถโหลดข้อมูลผู้ใช้ได้");
+      if (showLoading) {
+        alert("ไม่สามารถโหลดข้อมูลผู้ใช้ได้");
+      }
       setUsers([]);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
-  };
+  }, []);
+
+  // ✅ Initial load
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
+
+  // ✅ Polling - รีเฟรชข้อมูลทุก 30 วินาที สำหรับ Real-time Status
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadUsers(false); // ไม่แสดง loading spinner
+    }, 30000); // 30 วินาที
+
+    return () => clearInterval(interval);
+  }, [loadUsers]);
 
   const calculateStats = (userList) => {
     const stats = {
       total: userList.length,
-      admin: userList.filter(u => u.is_superuser).length,
+      admin: userList.filter(u => u.is_superuser).count,
       staff: userList.filter(u => !u.is_superuser).length,
-      active: userList.filter(u => u.is_active).length,
+      active: userList.filter(u => u.is_online).length, // ✅ ใช้ is_online แทน
       inactive: userList.filter(u => !u.is_active).length
     };
     setStats(stats);
@@ -126,22 +143,6 @@ export default function UsersPage() {
     }
   };
 
-  const handleToggleStatus = async (user) => {
-    try {
-      const { data } = await api.patch(`/auth/users/${user.id}/`, {
-        is_active: !user.is_active
-      });
-      
-      const updatedUser = data.user || data;
-      const newUsers = users.map(u => u.id === user.id ? updatedUser : u);
-      setUsers(newUsers);
-      calculateStats(newUsers);
-    } catch (err) {
-      console.error("Toggle status error:", err);
-      alert("เปลี่ยนสถานะไม่สำเร็จ");
-    }
-  };
-
   const formatDate = (dateString) => {
     if (!dateString) return "-";
     const date = new Date(dateString);
@@ -152,15 +153,6 @@ export default function UsersPage() {
       hour: "2-digit",
       minute: "2-digit"
     });
-  };
-
-  // ✅ เพิ่มฟังก์ชันเช็คว่า Online หรือไม่ (Login ภายใน 30 นาที)
-  const isUserOnline = (lastLogin) => {
-    if (!lastLogin) return false;
-    const now = new Date();
-    const loginTime = new Date(lastLogin);
-    const diffMinutes = (now - loginTime) / (1000 * 60);
-    return diffMinutes <= 30; // ถือว่า Online ถ้า Login ภายใน 30 นาที
   };
 
   if (loading) {
@@ -182,6 +174,11 @@ export default function UsersPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-800">จัดการผู้ใช้งาน</h1>
           <p className="text-sm text-gray-500 mt-1">จัดการบัญชีผู้ใช้และสิทธิ์การเข้าถึง</p>
+        </div>
+        {/* ✅ แสดงสถานะ Real-time */}
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+          อัพเดทอัตโนมัติทุก 30 วินาที
         </div>
       </div>
 
@@ -232,7 +229,7 @@ export default function UsersPage() {
         <div className="bg-gradient-to-br from-green-500 to-teal-600 rounded-xl p-5 text-white shadow-lg">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-green-100 text-sm mb-1">ใช้งานอยู่</p>
+              <p className="text-green-100 text-sm mb-1">ออนไลน์</p>
               <p className="text-3xl font-bold">{stats.active}</p>
             </div>
             <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm">
@@ -327,14 +324,21 @@ export default function UsersPage() {
                 const fullName = `${user.first_name || ""} ${user.last_name || ""}`.trim() || user.username;
                 const initial = fullName.charAt(0).toUpperCase();
                 const isAdmin = user.is_superuser;
-                const isOnline = isUserOnline(user.last_login); // ✅ ใช้ฟังก์ชันใหม่
+                const isOnline = user.is_online; // ✅ ใช้ is_online จาก API โดยตรง
 
                 return (
                   <tr key={user.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
-                          {initial}
+                        {/* ✅ Avatar พร้อม Online Indicator */}
+                        <div className="relative">
+                          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
+                            {initial}
+                          </div>
+                          {/* ✅ จุดสถานะ Online/Offline */}
+                          <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white ${
+                            isOnline ? 'bg-green-500' : 'bg-gray-400'
+                          }`}></div>
                         </div>
                         <div>
                           <p className="font-semibold text-gray-800">{fullName}</p>
@@ -363,9 +367,9 @@ export default function UsersPage() {
                       )}
                     </td>
                     <td className="px-6 py-4 text-center">
-                      {/* ✅ แสดงสถานะจาก last_login แทน is_active */}
+                      {/* ✅ สถานะ Real-time */}
                       <span
-                        className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold ${
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${
                           isOnline
                             ? 'bg-green-100 text-green-700'
                             : 'bg-gray-100 text-gray-600'
@@ -373,17 +377,13 @@ export default function UsersPage() {
                       >
                         {isOnline ? (
                           <>
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            ใช้งานอยู่
+                            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                            ออนไลน์
                           </>
                         ) : (
                           <>
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-                            </svg>
-                            Offline
+                            <span className="w-2 h-2 bg-gray-400 rounded-full"></span>
+                            ออฟไลน์
                           </>
                         )}
                       </span>
