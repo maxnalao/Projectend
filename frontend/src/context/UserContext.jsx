@@ -12,10 +12,12 @@ export function UserProvider({ children }) {
   const location = useLocation();
 
   const loadUser = async () => {
-    // ✅ เช็คว่าไม่ใช่หน้า auth
+    // ✅ เช็คว่าไม่ใช่หน้า auth (เพิ่ม forgot-password และ reset-password)
     const isAuthPage = 
       location.pathname === '/login' || 
       location.pathname === '/register' ||
+      location.pathname === '/forgot-password' ||
+      location.pathname.startsWith('/reset-password') ||
       location.pathname === '/';
     
     if (isAuthPage) {

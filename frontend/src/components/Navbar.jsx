@@ -1,27 +1,16 @@
 // src/components/Navbar.jsx
 import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
+import { useUser } from "../context/UserContext";  // ✅ เพิ่ม import
 import Header from "./Header";
 
 export default function Navbar() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [user, setUser] = useState(null);
+  const { user } = useUser();  // ✅ ใช้ context แทน localStorage
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
-
-  useEffect(() => {
-    // โหลดข้อมูล user จาก localStorage
-    const userData = localStorage.getItem("user");
-    if (userData) {
-      try {
-        setUser(JSON.parse(userData));
-      } catch (err) {
-        console.error("Parse user data error:", err);
-      }
-    }
-  }, []);
 
   // ปิด dropdown เมื่อคลิกข้างนอก
   useEffect(() => {
@@ -65,10 +54,13 @@ export default function Navbar() {
     return user?.username || "ผู้ใช้งาน";
   };
 
+  // ✅ เช็ค Admin ก่อนสร้าง menuItems
+  const isAdmin = user?.is_superuser || user?.is_staff;
+
   const menuItems = [
     {
-      path: "/overview",
-      name: "ภาพรวม",
+      path: isAdmin ? "/overview" : "/dashboard",  // ✅ แยก path ตาม role
+      name: "แดชบอร์ด",
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
@@ -105,8 +97,6 @@ export default function Navbar() {
     },
   ];
 
-  const isAdmin = user?.is_superuser || user?.is_staff;
-
   return (
     <>
       <Header />
@@ -115,7 +105,7 @@ export default function Navbar() {
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
-            <Link to="/overview" className="flex items-center gap-3">
+            <Link to={isAdmin ? "/overview" : "/dashboard"} className="flex items-center gap-3">
               <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
                 <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />

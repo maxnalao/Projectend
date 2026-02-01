@@ -176,3 +176,21 @@ if not LINE_CHANNEL_ACCESS_TOKEN or not LINE_CHANNEL_SECRET:
         "⚠️  LINE_CHANNEL_ACCESS_TOKEN หรือ LINE_CHANNEL_SECRET ยังไม่ตั้งค่า\n"
         "ตรวจสอบ: backend/.env ว่ามี LINE credentials"
     )
+
+# ✅ เพิ่มท้ายไฟล์ settings.py
+
+# ==========================================
+# 🔵 EMAIL Configuration (Gmail SMTP)
+# ==========================================
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')       # Gmail ของคุณ
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='') # App Password (ไม่ใช่รหัสปกติ)
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='EasyStock <noreply@easystock.com>')
+
+# ==========================================
+# 🔵 FRONTEND URL (สำหรับ Reset Password Link)
+# ==========================================
+FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:5173')    

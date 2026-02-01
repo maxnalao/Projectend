@@ -517,7 +517,7 @@ export default function StockPage() {
                         <span className="font-mono font-semibold text-gray-700">{it.code}</span>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="font-medium text-gray-800">{it.name}</span>
+                        <span className="font-medium text-gray-800">{it.display_name || it.name}</span>
                       </td>
                       <td className="px-6 py-4">
                         <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-medium">

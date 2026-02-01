@@ -30,11 +30,26 @@ export default function Login() {
       localStorage.setItem("access", data.access);
       localStorage.setItem("refresh", data.refresh);
       
-      // ✅ 3. โหลดข้อมูล user ใหม่
+      // ✅ 3. โหลดข้อมูล user ใหม่และรอให้เสร็จ
       await refreshUser();
       
-      // ✅ 4. Redirect
-      navigate("/products", { replace: true });
+      // ✅ 4. ดึงข้อมูล user จาก API เพื่อเช็ค role
+      const userResponse = await axios.get(`${AUTH_BASE}/user/`, {
+        headers: {
+          Authorization: `Bearer ${data.access}`
+        }
+      });
+      
+      const userData = userResponse.data;
+      
+      // ✅ 5. Redirect ตาม role
+      // Admin/Superuser → /overview (ภาพรวมระบบ)
+      // Staff → /dashboard (แดชบอร์ด)
+      if (userData?.is_superuser || userData?.role === 'admin') {
+        navigate("/overview", { replace: true });
+      } else {
+        navigate("/dashboard", { replace: true });
+      }
     } catch (e) {
       setErr("เข้าสู่ระบบไม่สำเร็จ ตรวจสอบชื่อผู้ใช้หรือรหัสผ่าน");
     } finally {
@@ -70,7 +85,7 @@ export default function Login() {
           {/* Form Section */}
           <div className="px-8 py-8">
             <div className="text-center mb-6">
-              <h2 className="text-2xl font-bold text-gray-800 mb-1">ยินดีต้อนรับกลับ</h2>
+              <h2 className="text-2xl font-bold text-gray-800 mb-1">ยินดีต้อนรับ</h2>
               <p className="text-gray-500 text-sm">เข้าสู่ระบบเพื่อจัดการสต็อกของคุณ</p>
             </div>
 
@@ -153,9 +168,10 @@ export default function Login() {
                   />
                   <span className="text-gray-600">จดจำฉันไว้</span>
                 </label>
-                <a href="#" className="text-blue-600 hover:text-blue-700 font-medium">
+                {/* ✅ แก้จาก <a href="#"> เป็น <Link to="/forgot-password"> */}
+                <Link to="/forgot-password" className="text-blue-600 hover:text-blue-700 font-medium">
                   ลืมรหัสผ่าน?
-                </a>
+                </Link>
               </div>
 
               {/* Submit Button */}

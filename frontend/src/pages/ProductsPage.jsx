@@ -474,7 +474,7 @@ export default function ProductsPage() {
                   {/* ✅ ชื่อสินค้า */}
                   <td className="px-6 py-4">
                     <span className="font-medium text-gray-800">
-                      {it.product_name || it.title || it.name || "-"}
+                      {it.title || it.product_name || it.name || "-"}
                     </span>
                   </td>
                   

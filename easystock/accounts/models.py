@@ -4,12 +4,17 @@ from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
+from datetime import timedelta
+import uuid
 
 
 class User(AbstractUser):
     profile_image = models.ImageField(upload_to='profiles/', null=True, blank=True)
     
-    # ✅ เพิ่มสำหรับ Real-time Online Status
+    # ✅ เพิ่มเบอร์โทรศัพท์
+    phone = models.CharField(max_length=20, null=True, blank=True, verbose_name="เบอร์โทรศัพท์")
+    
+    # ✅ สำหรับ Real-time Online Status
     is_online = models.BooleanField(default=False)
     last_activity = models.DateTimeField(null=True, blank=True)
     
@@ -33,18 +38,15 @@ class User(AbstractUser):
         return self.username
     
     def set_online(self):
-        """Set user as online"""
         self.is_online = True
         self.last_activity = timezone.now()
         self.save(update_fields=['is_online', 'last_activity'])
     
     def set_offline(self):
-        """Set user as offline"""
         self.is_online = False
         self.save(update_fields=['is_online'])
     
     def update_activity(self):
-        """Update last activity timestamp"""
         self.last_activity = timezone.now()
         self.is_online = True
         self.save(update_fields=['last_activity', 'is_online'])
@@ -72,8 +74,6 @@ class NotificationSettings(models.Model):
 
 # ✅ Model สำหรับ User Roles (Admin/Employee)
 class UserProfile(models.Model):
-    """User profile to store role"""
-    
     ROLE_CHOICES = (
         ('admin', 'Admin/Owner'),
         ('employee', 'Employee'),
@@ -111,8 +111,42 @@ class UserProfile(models.Model):
         return self.role == 'employee'
 
 
-# ✅ SIGNALS - สร้าง profile อัตโนมัติเมื่อสร้าง user
+# ✅ NEW: Password Reset Token
+class PasswordResetToken(models.Model):
+    """Token สำหรับ Reset Password ผ่าน Email"""
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='password_reset_tokens'
+    )
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    is_used = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
 
+    class Meta:
+        verbose_name = "Password Reset Token"
+        verbose_name_plural = "Password Reset Tokens"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Reset token for {self.user.username} ({'used' if self.is_used else 'active'})"
+
+    @property
+    def is_expired(self):
+        return timezone.now() > self.expires_at
+
+    @property
+    def is_valid(self):
+        return not self.is_used and not self.is_expired
+
+    def save(self, *args, **kwargs):
+        if not self.expires_at:
+            self.expires_at = timezone.now() + timedelta(minutes=30)
+        super().save(*args, **kwargs)
+
+
+# ✅ SIGNALS
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):
     if created:

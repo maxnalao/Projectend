@@ -11,7 +11,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ("username", "password", "email", "first_name", "last_name")
+        fields = ("username", "password", "email", "first_name", "last_name", "phone")  # ✅ เพิ่ม phone
 
     def create(self, validated_data):
         pwd = validated_data.pop("password")
@@ -32,10 +32,11 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             "id", "username", "email",
             "first_name", "last_name",
+            "phone",            # ✅ เพิ่ม phone
             "profile_image",
             "is_staff", "is_superuser", "is_active",
-            "is_online",        # ✅ เพิ่ม
-            "last_activity",    # ✅ เพิ่ม
+            "is_online",
+            "last_activity",
             "date_joined", "last_login",
         ]
         read_only_fields = ["id", "date_joined", "last_login", "is_online", "last_activity"]

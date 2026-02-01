@@ -1,51 +1,29 @@
 // src/components/FestivalCalendar.jsx
-// ✅ รวมวันหยุดไทย + เทศกาล + บันทึกของฉัน (customEvents)
+// ✅ รวมวันหยุดไทย + เทศกาล + บันทึกของฉัน (customEvents) - ลด emoji
 import React, { useEffect, useState, useMemo } from 'react';
 import api from '../api';
 
 const GOOGLE_API_KEY = "AIzaSyAtdfhSI2DJHNjiYfX_wD6MRHkiL2EIZb4";
 
-// ✅ แยกประเภทวันหยุด + เทศกาลที่ต้องเตรียมสินค้า
 const mapHolidayType = (name) => {
   const lowerName = name.toLowerCase();
   const thaiName = name;
   
-  // 🎁 เทศกาลขายดี - ต้องเตรียมสินค้า!
-  if (lowerName.includes("new year") || thaiName.includes("ปีใหม่") || thaiName.includes("ขึ้นปีใหม่")) {
-    return "selling_festival";
-  }
-  if (lowerName.includes("songkran") || thaiName.includes("สงกรานต์")) {
-    return "selling_festival";
-  }
-  if (lowerName.includes("loy krathong") || thaiName.includes("ลอยกระทง")) {
-    return "selling_festival";
-  }
-  if (lowerName.includes("valentine") || thaiName.includes("วาเลนไทน์")) {
-    return "selling_festival";
-  }
-  if (lowerName.includes("chinese new year") || thaiName.includes("ตรุษจีน")) {
-    return "selling_festival";
-  }
-  if (lowerName.includes("mother") || thaiName.includes("แม่") || thaiName.includes("สิริกิติ์")) {
-    return "selling_festival";
-  }
-  if (lowerName.includes("father") || thaiName.includes("พ่อ") || thaiName.includes("ภูมิพล")) {
-    return "selling_festival";
-  }
+  if (lowerName.includes("new year") || thaiName.includes("ปีใหม่") || thaiName.includes("ขึ้นปีใหม่")) return "selling_festival";
+  if (lowerName.includes("songkran") || thaiName.includes("สงกรานต์")) return "selling_festival";
+  if (lowerName.includes("loy krathong") || thaiName.includes("ลอยกระทง")) return "selling_festival";
+  if (lowerName.includes("valentine") || thaiName.includes("วาเลนไทน์")) return "selling_festival";
+  if (lowerName.includes("chinese new year") || thaiName.includes("ตรุษจีน")) return "selling_festival";
+  if (lowerName.includes("mother") || thaiName.includes("แม่") || thaiName.includes("สิริกิติ์")) return "selling_festival";
+  if (lowerName.includes("father") || thaiName.includes("พ่อ") || thaiName.includes("ภูมิพล")) return "selling_festival";
   
-  // 🧡 วันสำคัญทางพุทธศาสนา
   if (lowerName.includes("bucha") || lowerName.includes("buddhist") || lowerName.includes("phansa") || 
       thaiName.includes("มาฆ") || thaiName.includes("วิสาข") || thaiName.includes("อาสาฬ") || 
-      thaiName.includes("เข้าพรรษา") || thaiName.includes("ออกพรรษา") || thaiName.includes("บูชา")) {
-    return "buddhist";
-  }
+      thaiName.includes("เข้าพรรษา") || thaiName.includes("ออกพรรษา") || thaiName.includes("บูชา")) return "buddhist";
   
-  // 💛 วันเฉลิมพระชนมพรรษา
   if (lowerName.includes("king") || lowerName.includes("queen") || lowerName.includes("birthday") || 
       lowerName.includes("coronation") || thaiName.includes("เฉลิม") || thaiName.includes("พระราช") || 
-      thaiName.includes("จักรี") || thaiName.includes("ปิยมหาราช") || thaiName.includes("รัชกาล")) {
-    return "royal";
-  }
+      thaiName.includes("จักรี") || thaiName.includes("ปิยมหาราช") || thaiName.includes("รัชกาล")) return "royal";
   
   return "national";
 };
@@ -54,10 +32,18 @@ const FestivalCalendar = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [festivals, setFestivals] = useState([]);
   const [thaiHolidays, setThaiHolidays] = useState([]);
-  const [customEvents, setCustomEvents] = useState([]); // ✅ เพิ่ม customEvents
+  const [customEvents, setCustomEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showDetail, setShowDetail] = useState(false);
+
+  // ✅ Priority colors สำหรับแสดงวงกลมสี
+  const PRIORITY_COLORS = {
+    low: { dot: 'bg-green-500', label: 'ต่ำ' },
+    medium: { dot: 'bg-yellow-500', label: 'ปกติ' },
+    high: { dot: 'bg-red-500', label: 'สูง' },
+    urgent: { dot: 'bg-purple-500', label: 'ด่วน' },
+  };
 
   const monthNames = [
     'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
@@ -70,7 +56,6 @@ const FestivalCalendar = () => {
     fetchAllData();
   }, [currentDate.getFullYear()]);
 
-  // ✅ ดึง customEvents จาก API (fallback ไป localStorage ถ้า API ไม่พร้อม)
   useEffect(() => {
     loadCustomEvents();
   }, [currentDate]);
@@ -80,7 +65,6 @@ const FestivalCalendar = () => {
       const response = await api.get("/custom-events/");
       setCustomEvents(response.data.results || response.data || []);
     } catch (error) {
-      // Fallback: ใช้ localStorage ถ้า API ยังไม่พร้อม
       console.warn("Custom events API not ready, using localStorage fallback");
       const saved = localStorage.getItem("customEvents");
       if (saved) {
@@ -105,7 +89,6 @@ const FestivalCalendar = () => {
     }
   };
 
-  // ดึงเทศกาลจากระบบ
   const fetchFestivals = async () => {
     try {
       const year = currentDate.getFullYear();
@@ -120,11 +103,8 @@ const FestivalCalendar = () => {
     }
   };
 
-  // ✅ ดึงวันหยุดไทยจาก Google Calendar API
   const fetchThaiHolidays = async () => {
     const year = currentDate.getFullYear();
-    
-    // ✅ ลบ cache เก่าที่ไม่มี type แยก
     localStorage.removeItem(`holidays_overview_${year}`);
 
     try {
@@ -136,9 +116,7 @@ const FestivalCalendar = () => {
 
       const response = await fetch(url);
       
-      if (!response.ok) {
-        throw new Error("Google API Error");
-      }
+      if (!response.ok) throw new Error("Google API Error");
       
       const result = await response.json();
 
@@ -167,17 +145,16 @@ const FestivalCalendar = () => {
       }
     } catch (err) {
       console.error("Fetch Thai holidays error:", err);
+      const cached = localStorage.getItem(`holidays_overview_${year}`);
       if (cached) {
         setThaiHolidays(JSON.parse(cached).data);
       }
     }
   };
 
-  // ✅ รวม events ทั้งหมด (วันหยุด + เทศกาล + บันทึกของฉัน)
   const allEvents = useMemo(() => {
     const events = [];
     
-    // วันหยุดไทย (แยกตามประเภท)
     thaiHolidays.forEach((h) => {
       events.push({
         ...h,
@@ -188,7 +165,6 @@ const FestivalCalendar = () => {
       });
     });
     
-    // เทศกาลจากระบบ
     festivals.forEach((f) => {
       events.push({
         ...f,
@@ -199,7 +175,6 @@ const FestivalCalendar = () => {
       });
     });
 
-    // ✅ บันทึกของฉัน (customEvents)
     customEvents.forEach((e) => {
       events.push({
         ...e,
@@ -229,7 +204,6 @@ const FestivalCalendar = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1));
   };
 
-  // ✅ ดึง events ในวันนั้น
   const getEventsForDay = (day) => {
     const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     
@@ -271,7 +245,7 @@ const FestivalCalendar = () => {
       days.push(
         <div
           key={`day-${day}`}
-          className={`h-20 p-1 rounded-lg border transition-all cursor-pointer hover:shadow-md ${
+          className={`h-20 p-1.5 rounded-lg border transition-all cursor-pointer hover:shadow-md ${
             isToday ? 'bg-blue-50 border-blue-400 ring-2 ring-blue-200' :
             hasSelling ? 'bg-pink-50 border-pink-300' :
             hasBuddhist ? 'bg-orange-50 border-orange-300' :
@@ -283,7 +257,7 @@ const FestivalCalendar = () => {
           }`}
           onClick={() => dayEvents.length > 0 && handleEventClick(dayEvents[0])}
         >
-          <div className={`text-sm font-medium ${
+          <div className={`text-sm font-semibold ${
             isToday ? 'text-blue-600' :
             hasSelling ? 'text-pink-600' :
             hasBuddhist ? 'text-orange-600' :
@@ -298,7 +272,7 @@ const FestivalCalendar = () => {
             {dayEvents.slice(0, 2).map((event, idx) => (
               <div
                 key={idx}
-                className={`text-[10px] px-1 py-0.5 rounded truncate border ${
+                className={`text-xs px-1.5 py-0.5 rounded truncate border flex items-center gap-1 ${
                   event.isSelling || event.type === "selling_festival"
                     ? 'bg-pink-100 text-pink-700 border-pink-300'
                     : event.type === "buddhist" 
@@ -313,13 +287,14 @@ const FestivalCalendar = () => {
                 }`}
                 title={event.title || event.name}
               >
-                {(event.isSelling || event.type === "selling_festival") && ' '}
-                {event.icon && <span className="mr-0.5">{event.icon}</span>}
-                {event.title || event.name}
+                {event.isCustom && event.priority && (
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${PRIORITY_COLORS[event.priority]?.dot || 'bg-gray-400'}`}></span>
+                )}
+                <span className="truncate">{event.title || event.name}</span>
               </div>
             ))}
             {dayEvents.length > 2 && (
-              <div className="text-[10px] text-gray-500">+{dayEvents.length - 2}</div>
+              <div className="text-xs text-gray-500">+{dayEvents.length - 2}</div>
             )}
           </div>
         </div>
@@ -348,36 +323,58 @@ const FestivalCalendar = () => {
 
   return (
     <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-      <div className="px-6 py-4 bg-gradient-to-r from-pink-500 to-rose-500">
-        <h2 className="text-white font-bold text-lg flex items-center gap-2">📅 ปฏิทินเทศกาล</h2>
+      {/* Header - ลด emoji */}
+      <div className="px-4 py-3 bg-gradient-to-r from-pink-500 to-rose-500">
+        <h2 className="text-white font-bold text-base flex items-center gap-2">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          ปฏิทินเทศกาล
+        </h2>
       </div>
 
       <div className="p-4">
         <div className="flex items-center justify-between mb-4">
-          <button onClick={previousMonth} className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">← เดือนที่แล้ว</button>
+          <button onClick={previousMonth} className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg flex items-center gap-1">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            เดือนที่แล้ว
+          </button>
           <h3 className="font-bold text-gray-800">{monthNames[month]} {thaiYear}</h3>
-          <button onClick={nextMonth} className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">เดือนถัดไป →</button>
+          <button onClick={nextMonth} className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg flex items-center gap-1">
+            เดือนถัดไป
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
         </div>
 
-        <div className="grid grid-cols-7 gap-1 mb-1">
+        <div className="grid grid-cols-7 gap-1 mb-2">
           {dayNames.map((day, idx) => (
-            <div key={idx} className={`text-center text-xs font-medium py-2 ${idx === 0 ? 'text-red-500' : idx === 6 ? 'text-blue-500' : 'text-gray-500'}`}>{day}</div>
+            <div key={idx} className={`text-center text-sm font-semibold py-2 ${idx === 0 ? 'text-red-500' : idx === 6 ? 'text-blue-500' : 'text-gray-500'}`}>{day}</div>
           ))}
         </div>
 
         <div className="grid grid-cols-7 gap-1">
           {loading ? (
-            <div className="col-span-7 py-20 text-center text-gray-400">
-              <div className="animate-spin w-8 h-8 border-4 border-pink-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+            <div className="col-span-7 py-12 text-center text-gray-400">
+              <div className="animate-spin w-6 h-6 border-4 border-pink-500 border-t-transparent rounded-full mx-auto mb-2"></div>
               กำลังโหลด...
             </div>
           ) : renderCalendarDays()}
         </div>
 
+        {/* Upcoming Events - ลด emoji */}
         {!loading && upcomingEvents.length > 0 && (
           <div className="mt-4 pt-4 border-t">
-            <h4 className="font-bold text-gray-700 text-sm mb-2">📌 วันหยุดที่ใกล้ถึง</h4>
-            <div className="space-y-2 max-h-40 overflow-y-auto">
+            <h4 className="font-bold text-gray-700 text-sm mb-3 flex items-center gap-2">
+              <svg className="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+              </svg>
+              วันหยุดที่ใกล้ถึง
+            </h4>
+            <div className="space-y-2 max-h-36 overflow-y-auto">
               {upcomingEvents.map((event, idx) => (
                 <div key={idx} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 p-1.5 rounded-lg" onClick={() => handleEventClick(event)}>
                   <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
@@ -388,9 +385,7 @@ const FestivalCalendar = () => {
                     event.isFestival ? 'bg-green-500' : 'bg-blue-500'
                   }`}></span>
                   <span className="text-gray-500 text-xs w-14 flex-shrink-0">{new Date(event.date || event.start_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}</span>
-                  <span className={`truncate text-xs ${event.isSelling || event.type === "selling_festival" ? 'text-pink-700 font-medium' : 'text-gray-700'}`}>
-                    {(event.isSelling || event.type === "selling_festival") && ' '}
-                    {event.icon && <span className="mr-1">{event.icon}</span>}
+                  <span className={`truncate ${event.isSelling || event.type === "selling_festival" ? 'text-pink-700 font-medium' : 'text-gray-700'}`}>
                     {event.title || event.name}
                   </span>
                 </div>
@@ -399,19 +394,25 @@ const FestivalCalendar = () => {
           </div>
         )}
 
+        {/* Legend - ลด emoji */}
         <div className="mt-4 pt-4 border-t">
-          <h4 className="font-bold text-gray-700 text-sm mb-2">🎨 สัญลักษณ์</h4>
+          <h4 className="font-bold text-gray-700 text-sm mb-3 flex items-center gap-2">
+            <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+            </svg>
+            สัญลักษณ์
+          </h4>
           <div className="flex flex-wrap gap-3 text-xs">
-            <div className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-pink-500"></span><span className="text-gray-600 font-medium"> เทศกาลขายดี (เตรียมสินค้า!)</span></div>
-            <div className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-400"></span><span className="text-gray-600">วันหยุดราชการ</span></div>
-            <div className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-400"></span><span className="text-gray-600">วันสำคัญทางพุทธศาสนา</span></div>
-            <div className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-yellow-400"></span><span className="text-gray-600">วันเฉลิมพระชนมพรรษา</span></div>
-            <div className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-400"></span><span className="text-gray-600">เทศกาลร้าน</span></div>
-            <div className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-400"></span><span className="text-gray-600">บันทึกของฉัน</span></div>
+            <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-pink-500"></span><span className="text-gray-600 font-medium">เทศกาลขายดี (เตรียมสินค้า!)</span></div>
+            <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-400"></span><span className="text-gray-600">วันหยุดราชการ</span></div>
+            <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-orange-400"></span><span className="text-gray-600">วันสำคัญทางพุทธศาสนา</span></div>
+            <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-yellow-400"></span><span className="text-gray-600">วันเฉลิมพระชนมพรรษา</span></div>
+            <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-blue-400"></span><span className="text-gray-600">บันทึกของฉัน</span></div>
           </div>
         </div>
       </div>
 
+      {/* Event Detail Modal - ลด emoji */}
       {showDetail && selectedEvent && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowDetail(false)}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
@@ -423,25 +424,29 @@ const FestivalCalendar = () => {
               selectedEvent.isFestival ? 'bg-green-500' : 'bg-blue-500'
             }`}>
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl">{
-                    selectedEvent.isSelling || selectedEvent.type === "selling_festival" ? '' :
-                    selectedEvent.icon || (selectedEvent.isHoliday ? '🇹🇭' : selectedEvent.isFestival ? '🎉' : '📝')
-                  }</span>
-                  <h2 className="text-white font-bold">{selectedEvent.title || selectedEvent.name}</h2>
-                </div>
-                <button onClick={() => setShowDetail(false)} className="text-white/80 hover:text-white text-xl">✕</button>
+                <h2 className="text-white font-bold">{selectedEvent.title || selectedEvent.name}</h2>
+                <button onClick={() => setShowDetail(false)} className="text-white/80 hover:text-white">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
               </div>
             </div>
             <div className="p-4">
               {(selectedEvent.description || selectedEvent.notes) && <p className="text-gray-600 text-sm mb-3">{selectedEvent.description || selectedEvent.notes}</p>}
               <div className="space-y-2 text-sm">
                 <div className="flex items-center gap-2">
-                  <span className="text-gray-500">📅 วันที่:</span>
+                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <span className="text-gray-500">วันที่:</span>
                   <span className="text-gray-700 font-medium">{new Date(selectedEvent.date || selectedEvent.start_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-gray-500">🏷️ ประเภท:</span>
+                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                  </svg>
+                  <span className="text-gray-500">ประเภท:</span>
                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                     selectedEvent.isSelling || selectedEvent.type === "selling_festival" ? 'bg-pink-100 text-pink-700' :
                     selectedEvent.type === "buddhist" ? 'bg-orange-100 text-orange-700' :
@@ -449,13 +454,25 @@ const FestivalCalendar = () => {
                     selectedEvent.isHoliday ? 'bg-red-100 text-red-700' : 
                     selectedEvent.isFestival ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
                   }`}>
-                    {selectedEvent.isSelling || selectedEvent.type === "selling_festival" ? ' เทศกาลขายดี' :
+                    {selectedEvent.isSelling || selectedEvent.type === "selling_festival" ? 'เทศกาลขายดี' :
                      selectedEvent.type === "buddhist" ? 'วันสำคัญทางพุทธ' :
                      selectedEvent.type === "royal" ? 'วันเฉลิมพระชนมพรรษา' :
                      selectedEvent.isHoliday ? 'วันหยุดราชการ' : 
                      selectedEvent.isFestival ? 'เทศกาล' : 'บันทึกของฉัน'}
                   </span>
                 </div>
+                {selectedEvent.isCustom && selectedEvent.priority && (
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+                    </svg>
+                    <span className="text-gray-500">ความสำคัญ:</span>
+                    <span className="flex items-center gap-1.5">
+                      <span className={`w-3 h-3 rounded-full ${PRIORITY_COLORS[selectedEvent.priority]?.dot || 'bg-gray-400'}`}></span>
+                      <span className="text-gray-700 font-medium">{PRIORITY_COLORS[selectedEvent.priority]?.label || '-'}</span>
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -1,5 +1,5 @@
 // src/pages/EmployeeDashboard.jsx
-// ✅ ใช้ Tailwind CSS (ไม่ต้องมีไฟล์ .css แยก)
+// ✅ ใช้ Tailwind CSS - ลด emoji ให้ดูเป็นมืออาชีพ
 import React, { useEffect, useState } from 'react';
 import api from '../api';
 import FestivalCalendar from '../components/FestivalCalendar';
@@ -12,6 +12,7 @@ const EmployeeDashboard = () => {
     in_today: 0,
     out_today: 0,
     low_stock_items: [],
+    movements: [],
   });
 
   const [tasks, setTasks] = useState({
@@ -27,8 +28,24 @@ const EmployeeDashboard = () => {
 
   const fetchDashboardData = async () => {
     try {
-      const response = await api.get('/dashboard-stats/');
-      setStats(response.data);
+      const { data: dashboardData } = await api.get('/dashboard-stats/');
+      
+      // ✅ ดึง total stock จาก Listing API (เหมือน OverviewPage ของ Admin)
+      try {
+        const { data: listingsData } = await api.get("/listings/?active=1");
+        const listingArr = Array.isArray(listingsData) ? listingsData : (listingsData.results ?? []);
+        const totalStock = listingArr.reduce((sum, p) => {
+          const qty = parseFloat(p.quantity) || 0;
+          return sum + qty;
+        }, 0);
+        
+        setStats({
+          ...dashboardData,
+          total_products: totalStock  // ✅ แทนที่ด้วย Listing stock
+        });
+      } catch {
+        setStats(dashboardData);
+      }
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
     } finally {
@@ -60,24 +77,33 @@ const EmployeeDashboard = () => {
 
   return (
     <div className="space-y-6 p-4 max-w-7xl mx-auto">
-      {/* Header */}
+      {/* Header - ไม่มี emoji */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-          📊 แดชบอร์ด
-        </h1>
-        <p className="text-gray-500 mt-1">ยินดีต้อนรับเข้า EasyStock</p>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+            <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800">แดชบอร์ด</h1>
+            <p className="text-gray-500 text-sm">ยินดีต้อนรับเข้า EasyStock</p>
+          </div>
+        </div>
       </div>
 
       {/* Festival Notice Card */}
       <FestivalNoticeCard />
 
-      {/* Stats Cards */}
+      {/* Stats Cards - ไม่มี emoji */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Products */}
         <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-5 text-white shadow-lg hover:shadow-xl transition-shadow">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center text-2xl backdrop-blur-sm">
-              📦
+            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+              </svg>
             </div>
             <div>
               <p className="text-blue-100 text-sm">สินค้าทั้งหมด</p>
@@ -89,8 +115,10 @@ const EmployeeDashboard = () => {
         {/* Low Stock */}
         <div className="bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl p-5 text-white shadow-lg hover:shadow-xl transition-shadow">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center text-2xl backdrop-blur-sm">
-              ⚠️
+            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
             </div>
             <div>
               <p className="text-amber-100 text-sm">ต่ำกว่า 5 ชิ้น</p>
@@ -102,8 +130,10 @@ const EmployeeDashboard = () => {
         {/* Today Issues */}
         <div className="bg-gradient-to-br from-rose-500 to-pink-600 rounded-xl p-5 text-white shadow-lg hover:shadow-xl transition-shadow">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center text-2xl backdrop-blur-sm">
-              📤
+            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+              </svg>
             </div>
             <div>
               <p className="text-rose-100 text-sm">เบิกวันนี้</p>
@@ -115,8 +145,10 @@ const EmployeeDashboard = () => {
         {/* Pending Tasks */}
         <div className="bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl p-5 text-white shadow-lg hover:shadow-xl transition-shadow">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center text-2xl backdrop-blur-sm">
-              🎯
+            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+              </svg>
             </div>
             <div>
               <p className="text-purple-100 text-sm">งานรอดำเนินการ</p>
@@ -126,64 +158,140 @@ const EmployeeDashboard = () => {
         </div>
       </div>
 
-      {/* Calendar + Low Stock Items - Side by Side */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Low Stock Alert - Left Side */}
-        <div className="lg:col-span-1 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden h-fit">
-          <div className="px-6 py-4 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-100">
-            <h2 className="text-amber-800 font-bold text-lg flex items-center gap-2">
-              <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
-                <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              </div>
-              แจ้งเตือนของใกล้หมด
-            </h2>
-          </div>
-          
-          <div className="p-4">
-            {stats.low_stock_items.length === 0 ? (
-              <div className="py-12 text-center">
-                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <svg className="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+      {/* Calendar + Recent Movements + Low Stock - Side by Side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left Side - Recent Movements + Low Stock */}
+        <div className="flex flex-col gap-3 h-full">
+          {/* Recent Stock Movements - อยู่ด้านบน */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex-1 flex flex-col">
+            <div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100 flex items-center justify-between">
+              <h2 className="text-blue-800 font-bold text-base flex items-center gap-2">
+                <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
                   </svg>
                 </div>
-                <p className="text-green-600 font-medium">สต็อกทุกรายการเพียงพอ</p>
-              </div>
-            ) : (
-              <div className="space-y-3 max-h-[500px] overflow-y-auto">
-                {stats.low_stock_items.map((item) => (
-                  <div 
-                    key={item.id} 
-                    className="flex items-center gap-3 p-3 bg-red-50 border border-red-100 rounded-xl"
-                  >
-                    {item.image_url && (
-                      <div className="w-12 h-12 rounded-lg overflow-hidden bg-white shadow-sm flex-shrink-0">
-                        <img 
-                          src={item.image_url} 
-                          alt={item.name} 
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-semibold text-gray-800 truncate text-sm">{item.name}</h4>
-                      <p className="text-xs text-gray-500">{item.code}</p>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-lg font-bold text-red-600">{item.stock}</span>
-                      <span className="text-xs text-gray-500 ml-1">{item.unit}</span>
-                    </div>
+                สินค้าเข้า - ออก
+              </h2>
+              <a href="/history" className="text-blue-600 hover:text-blue-700 text-sm font-bold">
+                ดูทั้งหมด
+              </a>
+            </div>
+            
+            <div className="p-3 flex-1 overflow-y-auto">
+              {(!stats.movements || stats.movements.length === 0) ? (
+                <div className="flex flex-col items-center justify-center h-full text-center py-8">
+                  <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                    <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                    </svg>
                   </div>
-                ))}
-              </div>
-            )}
+                  <p className="text-gray-400">ยังไม่มีการเคลื่อนไหววันนี้</p>
+                </div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-600 border-b sticky top-0">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold">เวลา</th>
+                      <th className="px-3 py-2 text-left font-semibold">สินค้า</th>
+                      <th className="px-3 py-2 text-center font-semibold">ประเภท</th>
+                      <th className="px-3 py-2 text-right font-semibold">จำนวน</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {stats.movements.slice(0, 6).map((mv) => (
+                      <tr key={mv.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-3 py-2.5 text-gray-500">
+                          {new Date(mv.date).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}
+                        </td>
+                        <td className="px-3 py-2.5 text-gray-700 font-medium">
+                          {mv.name}
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
+                          <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
+                            mv.type === 'in' 
+                              ? 'bg-green-100 text-green-700' 
+                              : 'bg-red-100 text-red-700'
+                          }`}>
+                            {mv.type === 'in' ? 'รับเข้า' : 'เบิกออก'}
+                          </span>
+                        </td>
+                        <td className={`px-3 py-2.5 text-right font-bold ${
+                          mv.type === 'in' ? 'text-green-600' : 'text-red-600'
+                        }`}>
+                          {mv.qty}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+
+          {/* Low Stock Alert - อยู่ด้านล่าง */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex-1 flex flex-col">
+            <div className="px-4 py-3 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-100">
+              <h2 className="text-amber-800 font-bold text-base flex items-center gap-2">
+                <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
+                  <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                แจ้งเตือนของใกล้หมด
+              </h2>
+            </div>
+            
+            <div className="p-4 flex-1 overflow-y-auto">
+              {stats.low_stock_items.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full py-12 text-gray-400">
+                  <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center text-green-500 mb-3">
+                    <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <p className="font-medium text-green-600">สต็อกทุกรายการเพียงพอ</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {stats.low_stock_items.slice(0, 6).map((item) => (
+                    <div 
+                      key={item.id} 
+                      className="flex items-center gap-4 p-3 bg-red-50 border border-red-100 rounded-xl"
+                    >
+                      <div className="w-12 h-12 rounded-lg bg-white flex-shrink-0 overflow-hidden shadow-sm">
+                        {item.image_url ? (
+                          <img 
+                            src={item.image_url} 
+                            alt={item.name} 
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex items-center justify-center h-full text-gray-300">
+                            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                              <path d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" />
+                            </svg>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-800 truncate">{item.name}</p>
+                        <p className="text-xs text-gray-500">รหัส: {item.code}</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-lg font-bold text-red-600">{item.stock}</span>
+                        <p className="text-[10px] text-red-400 font-medium">{item.unit}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Festival Calendar - Right Side */}
-        <div className="lg:col-span-2">
+        <div>
           <FestivalCalendar />
         </div>
       </div>

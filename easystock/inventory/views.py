@@ -100,7 +100,7 @@ class ProductViewSet(ModelViewSet):
     parser_classes = [MultiPartParser, FormParser] 
 
     def get_queryset(self):
-        qs = Product.objects.select_related("category").filter(is_deleted=False)
+        qs = Product.objects.select_related("category", "created_by","listing").filter(is_deleted=False)  # ✅ เพิ่ม created_by
         show_empty = self.request.query_params.get("show_empty", "0")
         if str(show_empty).lower() not in ("1", "true", "yes"):
             qs = qs.filter(stock__gt=0)
@@ -126,7 +126,12 @@ class ProductViewSet(ModelViewSet):
         
         product = Product.objects.get(id=response.data['id'])
         product.initial_stock = product.stock
-        product.save(update_fields=['initial_stock'])
+        
+        # ✅ บันทึก created_by ถ้า user login อยู่
+        if request.user and request.user.is_authenticated:
+            product.created_by = request.user
+        
+        product.save(update_fields=['initial_stock', 'created_by'])
         
         if LINE_AVAILABLE and line_service:
             try:
@@ -507,14 +512,32 @@ def movement_history(request):
             return None
         # ถ้า user model มี profile_image field
         if hasattr(user, 'profile_image') and user.profile_image:
-            return request.build_absolute_uri(user.profile_image.url)
+            try:
+                return request.build_absolute_uri(user.profile_image.url)
+            except:
+                pass
         # ถ้ามี profile model แยก
         if hasattr(user, 'profile') and hasattr(user.profile, 'image') and user.profile.image:
-            return request.build_absolute_uri(user.profile.image.url)
+            try:
+                return request.build_absolute_uri(user.profile.image.url)
+            except:
+                pass
         # ถ้ามี avatar field
         if hasattr(user, 'avatar') and user.avatar:
-            return request.build_absolute_uri(user.avatar.url)
+            try:
+                return request.build_absolute_uri(user.avatar.url)
+            except:
+                pass
         return None
+    
+    # ✅ Helper function สำหรับดึงชื่อผู้ใช้
+    def get_user_display_name(user):
+        if not user:
+            return 'ไม่ระบุ'
+        full_name = user.get_full_name()
+        if full_name and full_name.strip():
+            return full_name
+        return user.username
     
     # ดึงข้อมูลการเบิก (Issue) - type = 'out'
     if movement_type in ['all', 'out']:
@@ -540,21 +563,17 @@ def movement_history(request):
                     'qty': line.qty,
                     'unit': line.product.unit,
                     # ✅ ข้อมูลผู้ดำเนินการ
-                    'created_by_name': user.get_full_name() or user.username if user else 'ไม่ระบุ',
+                    'created_by_name': get_user_display_name(user),
                     'created_by_username': user.username if user else None,
-                    'profile_image': get_profile_image_url(user),  # ✅ เพิ่มรูปโปรไฟล์
+                    'profile_image': get_profile_image_url(user),
                 })
     
-    # ดึงข้อมูลการรับเข้า - type = 'in'
+    # ✅ ดึงข้อมูลการรับเข้า - type = 'in' (แก้ไขให้ select_related created_by)
     if movement_type in ['all', 'in']:
         products = Product.objects.filter(
             is_deleted=False,
             initial_stock__gt=0
-        ).order_by('-created_at')
-        
-        # ถ้า Product มี created_by field
-        if hasattr(Product, 'created_by'):
-            products = products.select_related('created_by')
+        ).select_related('created_by').order_by('-created_at')  # ✅ เพิ่ม select_related
         
         if search:
             products = products.filter(
@@ -567,7 +586,9 @@ def movement_history(request):
             products = products.filter(created_at__date__lte=end_date)
         
         for product in products:
-            user = getattr(product, 'created_by', None)
+            # ✅ ดึง created_by จาก product โดยตรง
+            user = product.created_by if hasattr(product, 'created_by') else None
+            
             movements.append({
                 'id': f'in-{product.id}',
                 'date': product.created_at.isoformat(),
@@ -577,9 +598,9 @@ def movement_history(request):
                 'qty': product.initial_stock,
                 'unit': product.unit,
                 # ✅ ข้อมูลผู้ดำเนินการ
-                'created_by_name': user.get_full_name() or user.username if user else 'ไม่ระบุ',
+                'created_by_name': get_user_display_name(user),
                 'created_by_username': user.username if user else None,
-                'profile_image': get_profile_image_url(user),  # ✅ เพิ่มรูปโปรไฟล์
+                'profile_image': get_profile_image_url(user),
             })
     
     # เรียงตามวันที่ล่าสุด

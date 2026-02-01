@@ -35,34 +35,64 @@ export default function EditListingModal({ open, listing, onClose, onSaved }) {
   const categoryName = listing.category_name || listing.category || "-";
 
   const onSubmit = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      const fd = new FormData();
-      fd.append("title", title ?? "");
-      if (salePrice !== "" && salePrice !== null) fd.append("sale_price", salePrice);
-      fd.append("unit", unit ?? "");
-      fd.append("quantity", String(parseInt(quantity || 0, 10)));
-      if (image) fd.append("image", image);
-
-      const res = await api.patch(`/listings/${listing.id}/`, fd, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      if (res.status === 200) {
-        alert("บันทึกข้อมูลสำเร็จ!");
-        onSaved?.();
-      } else {
-        const text = typeof res.data === "string" ? res.data : JSON.stringify(res.data);
-        alert(`บันทึกไม่สำเร็จ (${res.status}) ${text}`);
-      }
-    } catch (err) {
-      const status = err?.response?.status;
-      const data = err?.response?.data;
-      alert(`บันทึกไม่สำเร็จ (${status ?? "ERR"}) ${data ? JSON.stringify(data) : ""}`);
-    } finally {
-      setSaving(false);
+  e.preventDefault();
+  setSaving(true);
+  
+  console.log("📤 Sending update data:", {
+    title,
+    salePrice,
+    unit,
+    quantity,
+    hasImage: !!image
+  });
+  
+  try {
+    const fd = new FormData();
+    
+    // ✅ ส่ง title เสมอ (แม้จะเป็นค่าว่าง)
+    fd.append("title", title.trim());
+    
+    if (salePrice !== "" && salePrice !== null) {
+      fd.append("sale_price", parseFloat(salePrice));
     }
-  };
+    
+    fd.append("unit", unit?.trim() || "");
+    fd.append("quantity", String(parseInt(quantity || 0, 10)));
+    
+    if (image) {
+      fd.append("image", image);
+    }
+
+    console.log("📡 Updating listing ID:", listing.id);
+    
+    const res = await api.patch(`/listings/${listing.id}/`, fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    
+    console.log("✅ Update response:", res.status, res.data);
+    
+    if (res.status === 200) {
+      alert("บันทึกข้อมูลสำเร็จ!");
+      
+      // ✅ เรียก onSaved และรอให้เสร็จ
+      if (onSaved) {
+        console.log("🔄 Calling onSaved...");
+        await onSaved();
+        console.log("✅ onSaved completed");
+      }
+    } else {
+      const text = typeof res.data === "string" ? res.data : JSON.stringify(res.data);
+      alert(`บันทึกไม่สำเร็จ (${res.status}) ${text}`);
+    }
+  } catch (err) {
+    console.error("❌ Update error:", err);
+    const status = err?.response?.status;
+    const data = err?.response?.data;
+    alert(`บันทึกไม่สำเร็จ (${status ?? "ERR"}) ${data ? JSON.stringify(data) : err.message}`);
+  } finally {
+    setSaving(false);
+  }
+};
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">

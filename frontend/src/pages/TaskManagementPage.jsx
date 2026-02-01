@@ -62,11 +62,28 @@ export default function TaskManagementPage() {
     try {
       setLoading(true);
       
+      // ✅ Clean data ก่อนส่ง - ส่งเฉพาะ field ที่ backend ต้องการ
+      const submitData = {
+        title: formData.title,
+        description: formData.description || "",
+        task_type: formData.task_type,
+        assigned_to: parseInt(formData.assigned_to),
+        priority: formData.priority,
+        due_date: formData.due_date, // format: yyyy-MM-ddTHH:mm
+      };
+      
+      // เพิ่ม optional fields ถ้ามีค่า
+      if (formData.target_quantity) {
+        submitData.target_quantity = parseInt(formData.target_quantity);
+      }
+      
+      console.log("Submitting:", submitData);
+      
       if (editingId) {
-        await api.patch(`/tasks/${editingId}/`, formData);
+        await api.patch(`/tasks/${editingId}/`, submitData);
         alert("อัปเดตงานเสร็จแล้ว");
       } else {
-        await api.post("/tasks/", formData);
+        await api.post("/tasks/", submitData);
         alert("สร้างงานเสร็จแล้ว");
       }
 
@@ -86,7 +103,8 @@ export default function TaskManagementPage() {
       fetchTasks();
     } catch (err) {
       console.error("Error saving task:", err);
-      alert("เกิดข้อผิดพลาด: " + (err.response?.data?.detail || err.message));
+      console.error("Error response:", err.response?.data);
+      alert("เกิดข้อผิดพลาด: " + JSON.stringify(err.response?.data || err.message));
     } finally {
       setLoading(false);
     }
@@ -162,20 +180,19 @@ export default function TaskManagementPage() {
     return labels[priority] || priority;
   };
 
-  // ✅ Task type แบบไม่มี emoji
+  // ✅ Task type ตรงกับ backend
   const getTaskTypeLabel = (taskType) => {
     const labels = {
-      'stock_replenishment': 'เติมสินค้า',
-      'stock_issue': 'เบิกสต๊อก',
-      'inventory_check': 'ตรวจสต็อก',
-      'preparation': 'เตรียมสินค้า',
-      'other': 'อื่นๆ'
+      'stock_replenishment': '🎁 เติมสินค้า',
+      'stock_issue': '📤 เบิกสต๊อก',
+      'inventory_check': '🔍 ตรวจสต็อก',
+      'preparation': '📋 เตรียมสินค้า',
+      'other': '📝 อื่นๆ'
     };
     return labels[taskType] || taskType;
   };
 
   const getTaskTypeIcon = (taskType) => {
-    // ใช้ SVG icon แทน emoji
     const icons = {
       'stock_replenishment': (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -295,11 +312,11 @@ export default function TaskManagementPage() {
                   onChange={(e) => setFormData({ ...formData, task_type: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
-                  <option value="stock_replenishment">เติมสินค้า</option>
-                  <option value="stock_issue">เบิกสต๊อก</option>
-                  <option value="inventory_check">ตรวจสต็อก</option>
-                  <option value="preparation">เตรียมสินค้า</option>
-                  <option value="other">อื่นๆ</option>
+                  <option value="stock_replenishment">🎁 เติมสินค้า</option>
+                  <option value="stock_issue">📤 เบิกสต๊อก</option>
+                  <option value="inventory_check">🔍 ตรวจสต็อก</option>
+                  <option value="preparation">📋 เตรียมสินค้า</option>
+                  <option value="other">📝 อื่นๆ</option>
                 </select>
               </div>
             </div>
@@ -325,16 +342,28 @@ export default function TaskManagementPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">ลำดับความสำคัญ</label>
-                <select
-                  value={formData.priority}
-                  onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="low">ต่ำ</option>
-                  <option value="medium">ปกติ</option>
-                  <option value="high">สูง</option>
-                  <option value="urgent">ด่วน</option>
-                </select>
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    { value: 'low', label: 'ต่ำ', color: 'border-green-500 bg-green-50 text-green-700', dotColor: 'bg-green-500' },
+                    { value: 'medium', label: 'ปกติ', color: 'border-yellow-500 bg-yellow-50 text-yellow-700', dotColor: 'bg-yellow-500' },
+                    { value: 'high', label: 'สูง', color: 'border-red-500 bg-red-50 text-red-700', dotColor: 'bg-red-500' },
+                    { value: 'urgent', label: 'ด่วน', color: 'border-purple-500 bg-purple-50 text-purple-700', dotColor: 'bg-purple-500' },
+                  ].map((p) => (
+                    <button
+                      key={p.value}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, priority: p.value })}
+                      className={`px-3 py-2 text-sm font-medium rounded-lg border-2 transition-all flex items-center justify-center gap-2 ${
+                        formData.priority === p.value 
+                          ? p.color + ' ring-2 ring-offset-1' 
+                          : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      <span className={`w-3 h-3 rounded-full ${p.dotColor}`}></span>
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
