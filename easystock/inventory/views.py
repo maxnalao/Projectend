@@ -1,19 +1,14 @@
-# inventory/views.py - เปลี่ยนบรรทัด import ให้เป็นแบบนี้
-
+# inventory/views.py
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 from rest_framework import viewsets, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser 
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
-from rest_framework import status
 from django.db import transaction
 from django.utils import timezone
-from django.db.models import Q
-from .models import CustomEvent
-from .serializers import CustomEventSerializer
-from django.contrib.auth import get_user_model  # ← เปลี่ยนเป็นแบบนี้
-from django.db.models import Sum, Count, F, Q
+from django.db.models import Q, Sum, Count, F
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ObjectDoesNotExist
 from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse, HttpResponseBadRequest
@@ -23,39 +18,35 @@ import string
 from datetime import timedelta, datetime
 import logging
 
-User = get_user_model()  # ← เพิ่มบรรทัดนี้
+User = get_user_model()
 
-# ✅ Import all models (existing + Phase 3A + Task)
 from .models import (
     Product, Category, Issue, IssueLine, Listing,
-    Festival, BestSeller, FestivalForecast, ForecastProduct, Task
+    Festival, BestSeller, FestivalForecast, ForecastProduct, 
+    Task, CustomEvent
 )
 
-# ✅ Import all serializers (existing + Phase 3A + Task + User)
 from .serializers import (
     ProductSerializer, CategorySerializer, ListingSerializer,
     FestivalSerializer, BestSellerSerializer, BestSellerDetailSerializer,
     FestivalForecastSerializer, ForecastProductSerializer,
-    FestivalWithBestSellersSerializer, TaskSerializer, UserSerializer
+    FestivalWithBestSellersSerializer, TaskSerializer, UserSerializer,
+    CustomEventSerializer
 )
 
-# ... เหลือส่วนอื่น ๆ เหมือนเดิม
-
-# ✅ Import NotificationSettings
 try:
     from accounts.models import NotificationSettings
 except ImportError:
     NotificationSettings = None
     print("⚠️ Warning: accounts.models.NotificationSettings not found.")
 
-# ✅ Import permissions for Dashboard
 try:
     from accounts.permissions import IsAdmin, IsEmployee
 except ImportError:
     IsAdmin = IsAuthenticated
     IsEmployee = IsAuthenticated
 
-# ✅ LINE Messaging API Setup
+# LINE Messaging API Setup
 LINE_AVAILABLE = False
 line_service = None
 logger = logging.getLogger(__name__)
@@ -65,7 +56,6 @@ try:
     from linebot.models import MessageEvent, TextMessage
     from .line_messaging import LineMessagingService
     
-    # สร้าง LINE Service Instance
     line_service = LineMessagingService(
         channel_access_token=getattr(settings, 'LINE_CHANNEL_ACCESS_TOKEN', ''),
         channel_secret=getattr(settings, 'LINE_CHANNEL_SECRET', '')
@@ -75,19 +65,21 @@ except Exception as e:
     print(f"⚠️ LINE SDK initialization error: {e}")
 
 
-# ==================== USER VIEWSET (NEW) ====================
+# ==================== USER VIEWSET ====================
 
 class UserViewSet(ReadOnlyModelViewSet):
-    """ViewSet สำหรับดึงข้อมูลผู้ใช้ (Admin only)"""
+    """
+    📋 จัดการข้อมูลผู้ใช้ (Admin only)
+    - ดึงรายชื่อพนักงาน
+    - ใช้สำหรับมอบหมายงาน
+    """
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        """เฉพาะ Admin เท่านั้นที่ดึงได้"""
         user = self.request.user
         if user.is_staff or user.is_superuser:
-            # Filter เฉพาะพนักงาน (ไม่ใช่ admin)
             return User.objects.filter(is_staff=False, is_superuser=False)
         return User.objects.none()
 
@@ -95,12 +87,15 @@ class UserViewSet(ReadOnlyModelViewSet):
 # ==================== PRODUCT VIEWSET ====================
 
 class ProductViewSet(ModelViewSet):
+    """
+    📦 จัดการสินค้าในคลัง
+    """
     permission_classes = [AllowAny]
     serializer_class = ProductSerializer
     parser_classes = [MultiPartParser, FormParser] 
 
     def get_queryset(self):
-        qs = Product.objects.select_related("category", "created_by","listing").filter(is_deleted=False)  # ✅ เพิ่ม created_by
+        qs = Product.objects.select_related("category", "created_by","listing").filter(is_deleted=False)
         show_empty = self.request.query_params.get("show_empty", "0")
         if str(show_empty).lower() not in ("1", "true", "yes"):
             qs = qs.filter(stock__gt=0)
@@ -118,7 +113,6 @@ class ProductViewSet(ModelViewSet):
         return qs.order_by("-id")
 
     def create(self, request, *args, **kwargs):
-        """Create product + send LINE notification for stock in"""
         response = super().create(request, *args, **kwargs)
         
         if response.status_code != 201:
@@ -127,7 +121,6 @@ class ProductViewSet(ModelViewSet):
         product = Product.objects.get(id=response.data['id'])
         product.initial_stock = product.stock
         
-        # ✅ บันทึก created_by ถ้า user login อยู่
         if request.user and request.user.is_authenticated:
             product.created_by = request.user
         
@@ -140,11 +133,7 @@ class ProductViewSet(ModelViewSet):
                 
                 if user_id:
                     line_service.send_stock_in_notification(
-                        user_id,
-                        product.name,
-                        product.code,
-                        product.stock,
-                        product.unit
+                        user_id, product.name, product.code, product.stock, product.unit
                     )
             except NotificationSettings.DoesNotExist:
                 pass
@@ -154,8 +143,6 @@ class ProductViewSet(ModelViewSet):
         return response
 
     def update(self, request, *args, **kwargs):
-        """Update product + send LINE notification for stock change"""
-        
         instance = self.get_object()
         old_stock = instance.stock
         
@@ -178,25 +165,15 @@ class ProductViewSet(ModelViewSet):
                     
                     if stock_change > 0:
                         line_service.send_stock_in_notification(
-                            user_id,
-                            product.name,
-                            product.code,
-                            stock_change,
-                            product.unit
+                            user_id, product.name, product.code, stock_change, product.unit
                         )
                         
                         if product.stock < 5 and product.stock > 0:
                             line_service.send_low_stock_alert(
-                                user_id,
-                                product.name,
-                                product.code,
-                                product.stock,
-                                product.unit
+                                user_id, product.name, product.code, product.stock, product.unit
                             )
                     else:
-                        line_service.send_text_message(
-                            user_id,
-                            f"""📉 ปรับปรุงสต็อก
+                        line_service.send_text_message(user_id, f"""📉 ปรับปรุงสต็อก
 
 📦 สินค้า: {product.name}
 🔖 รหัส: {product.code}
@@ -204,15 +181,10 @@ class ProductViewSet(ModelViewSet):
 📊 คงเหลือ: {new_stock} {product.unit}
 👤 ปรับปรุงโดย: {updated_by}
 
-บันทึกเรียบร้อยแล้ว"""
-                        )
+บันทึกเรียบร้อยแล้ว""")
                         
                         if new_stock == 0:
-                            line_service.send_out_of_stock_alert(
-                                user_id,
-                                product.name,
-                                product.code
-                            )
+                            line_service.send_out_of_stock_alert(user_id, product.name, product.code)
             except NotificationSettings.DoesNotExist:
                 pass
             except Exception as e:
@@ -221,12 +193,20 @@ class ProductViewSet(ModelViewSet):
         return response
 
     def destroy(self, request, *args, **kwargs):
-        return Response({"detail": "ไม่อนุญาตให้ลบสินค้าในคลังผ่านหน้านี้"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        return Response(
+            {"detail": "ไม่อนุญาตให้ลบสินค้าในคลังผ่านหน้านี้"}, 
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
 
 
 # ==================== CATEGORY VIEWSET ====================
 
 class CategoryViewSet(ModelViewSet):
+    """
+    📂 จัดการหมวดหมู่สินค้า
+    - เพิ่ม/แก้ไข/ลบหมวดหมู่
+    - แสดงจำนวนสินค้าในแต่ละหมวดหมู่
+    """
     queryset = Category.objects.all().order_by("name")
     serializer_class = CategorySerializer
     permission_classes = [AllowAny]
@@ -235,6 +215,12 @@ class CategoryViewSet(ModelViewSet):
 # ==================== LISTING VIEWSET ====================
 
 class ListingViewSet(ModelViewSet):
+    """
+    🏪 จัดการสินค้าที่แสดงขาย
+    - สินค้าที่เบิกออกมาขายแล้ว
+    - รองรับการค้นหาและกรอง
+    - ปิด/เปิดการแสดงขาย
+    """
     queryset = Listing.objects.select_related("product", "product__category").filter(product__is_deleted=False)
     serializer_class = ListingSerializer
     permission_classes = [AllowAny]
@@ -284,15 +270,14 @@ class ListingViewSet(ModelViewSet):
 # ==================== TASK VIEWSET ====================
 
 class TaskViewSet(ModelViewSet):
-    """ViewSet สำหรับจัดการงาน"""
+    """
+    📋 จัดการงานที่มอบหมาย
+    """
     serializer_class = TaskSerializer
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        """ดึงงานของผู้ใช้ปัจจุบัน"""
         user = self.request.user
-        
-        # Admin เห็นทุกงาน พนักงานเห็นแค่งานของตัวเอง
         if user.is_staff or user.is_superuser:
             return Task.objects.all().order_by('-due_date')
         else:
@@ -300,11 +285,9 @@ class TaskViewSet(ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def my_tasks(self, request):
-        """ดึงงานของผู้ใช้ปัจจุบัน"""
         user = request.user
         tasks = Task.objects.filter(assigned_to=user).order_by('-due_date')
         
-        # แยกตามสถานะ
         pending = tasks.filter(status='pending')
         in_progress = tasks.filter(status='in_progress')
         completed = tasks.filter(status='completed')
@@ -318,7 +301,6 @@ class TaskViewSet(ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def urgent_tasks(self, request):
-        """ดึงงานด่วนที่ยังไม่เสร็จ"""
         user = request.user
         tasks = Task.objects.filter(
             assigned_to=user,
@@ -333,7 +315,6 @@ class TaskViewSet(ModelViewSet):
     
     @action(detail=True, methods=['post', 'patch'])
     def update_status(self, request, pk=None):
-        """อัปเดตสถานะงาน"""
         task = self.get_object()
         status_choice = request.data.get('status')
         notes = request.data.get('notes', '')
@@ -354,6 +335,12 @@ class TaskViewSet(ModelViewSet):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def issue_products(request):
+    """
+    🚚 เบิกสินค้าออกจากคลัง
+    - ลดสต็อกในคลัง
+    - สร้าง Listing สำหรับขาย
+    - ส่ง LINE notification
+    """
     items = request.data.get("items", [])
     if not isinstance(items, list) or not items:
         return Response({"detail": "items is required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -418,6 +405,7 @@ def issue_products(request):
 @api_view(["POST", "PATCH", "DELETE"])
 @permission_classes([AllowAny])
 def product_unlist(request, pk: int):
+    """❌ ยกเลิกการแสดงขายสินค้า"""
     try:
         product = Product.objects.get(pk=pk, is_deleted=False)
     except Product.DoesNotExist:
@@ -439,6 +427,13 @@ def product_unlist(request, pk: int):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def dashboard_stats(request):
+    """
+    📊 สถิติแดชบอร์ด
+    - จำนวนสินค้า, สต็อกต่ำ
+    - รับเข้า/เบิกออกวันนี้
+    - มูลค่าสต็อกทั้งหมด
+    - ประวัติการเคลื่อนไหว
+    """
     from zoneinfo import ZoneInfo
     from datetime import time
     bangkok_tz = ZoneInfo('Asia/Bangkok')
@@ -491,13 +486,14 @@ def dashboard_stats(request):
 @permission_classes([IsAuthenticated])
 def movement_history(request):
     """
-    ✅ API ดึงประวัติการเคลื่อนไหวสินค้า (รับเข้า + เบิกออก)
-    พร้อมข้อมูลผู้ดำเนินการ + รูปโปรไฟล์
+    📜 ประวัติการเคลื่อนไหวสินค้า
+    - รับเข้า (in) และเบิกออก (out)
+    - แสดงผู้ดำเนินการ + รูปโปรไฟล์
+    - รองรับการค้นหาและกรองตามวันที่
     """
     from django.db.models import Q
     from .models import Issue, IssueLine, Product
     
-    # Get filters
     search = request.query_params.get('search', '')
     start_date = request.query_params.get('start_date', '')
     end_date = request.query_params.get('end_date', '')
@@ -506,23 +502,19 @@ def movement_history(request):
     
     movements = []
     
-    # ✅ Helper function สำหรับดึง profile image URL
     def get_profile_image_url(user):
         if not user:
             return None
-        # ถ้า user model มี profile_image field
         if hasattr(user, 'profile_image') and user.profile_image:
             try:
                 return request.build_absolute_uri(user.profile_image.url)
             except:
                 pass
-        # ถ้ามี profile model แยก
         if hasattr(user, 'profile') and hasattr(user.profile, 'image') and user.profile.image:
             try:
                 return request.build_absolute_uri(user.profile.image.url)
             except:
                 pass
-        # ถ้ามี avatar field
         if hasattr(user, 'avatar') and user.avatar:
             try:
                 return request.build_absolute_uri(user.avatar.url)
@@ -530,7 +522,6 @@ def movement_history(request):
                 pass
         return None
     
-    # ✅ Helper function สำหรับดึงชื่อผู้ใช้
     def get_user_display_name(user):
         if not user:
             return 'ไม่ระบุ'
@@ -539,7 +530,6 @@ def movement_history(request):
             return full_name
         return user.username
     
-    # ดึงข้อมูลการเบิก (Issue) - type = 'out'
     if movement_type in ['all', 'out']:
         issues = Issue.objects.select_related('created_by').prefetch_related('lines__product').order_by('-created_at')
         
@@ -562,18 +552,16 @@ def movement_history(request):
                     'type': 'out',
                     'qty': line.qty,
                     'unit': line.product.unit,
-                    # ✅ ข้อมูลผู้ดำเนินการ
                     'created_by_name': get_user_display_name(user),
                     'created_by_username': user.username if user else None,
                     'profile_image': get_profile_image_url(user),
                 })
     
-    # ✅ ดึงข้อมูลการรับเข้า - type = 'in' (แก้ไขให้ select_related created_by)
     if movement_type in ['all', 'in']:
         products = Product.objects.filter(
             is_deleted=False,
             initial_stock__gt=0
-        ).select_related('created_by').order_by('-created_at')  # ✅ เพิ่ม select_related
+        ).select_related('created_by').order_by('-created_at')
         
         if search:
             products = products.filter(
@@ -586,7 +574,6 @@ def movement_history(request):
             products = products.filter(created_at__date__lte=end_date)
         
         for product in products:
-            # ✅ ดึง created_by จาก product โดยตรง
             user = product.created_by if hasattr(product, 'created_by') else None
             
             movements.append({
@@ -597,13 +584,11 @@ def movement_history(request):
                 'type': 'in',
                 'qty': product.initial_stock,
                 'unit': product.unit,
-                # ✅ ข้อมูลผู้ดำเนินการ
                 'created_by_name': get_user_display_name(user),
                 'created_by_username': user.username if user else None,
                 'profile_image': get_profile_image_url(user),
             })
     
-    # เรียงตามวันที่ล่าสุด
     movements.sort(key=lambda x: x['date'], reverse=True)
     
     total = len(movements)
@@ -615,11 +600,12 @@ def movement_history(request):
         'showing': len(movements)
     })
 
+
 # ==================== LINE MESSAGING API ====================
 
 @csrf_exempt
 def line_webhook(request):
-    """รับ webhook จาก LINE"""
+    """💬 รับ webhook จาก LINE (สำหรับเชื่อมต่อและแจ้งเตือน)"""
     print("🔥 WEBHOOK CALLED!")
     
     if not LINE_AVAILABLE: 
@@ -648,13 +634,14 @@ def line_webhook(request):
 if LINE_AVAILABLE and line_service:
     @line_service.handler.add(MessageEvent, message=TextMessage)
     def handle_text_message(event):
-        print("📩 MESSAGE RECEIVED!")  # เพิ่มบรรทัดนี้
-        print(f"Text: {event.message.text}")  # เพิ่มบรรทัดนี้
-        print(f"User ID: {event.source.user_id}")  # เพิ่มบรรทัดนี้
+        """จัดการข้อความที่ส่งมาจาก LINE"""
+        print("📩 MESSAGE RECEIVED!")
+        print(f"Text: {event.message.text}")
+        print(f"User ID: {event.source.user_id}")
         user_id = event.source.user_id
         text = event.message.text.strip()
         
-        # ✅ Case 1: รหัส 6 หลัก (เดิม)
+        # Case 1: รหัส 6 หลัก
         if len(text) == 6 and text.isdigit():
             try:
                 settings_obj = NotificationSettings.objects.get(verification_code=text)
@@ -673,28 +660,23 @@ if LINE_AVAILABLE and line_service:
                 )
             return
 
-        # ✅ Case 2: เชื่อม [username] - ใหม่!
+        # Case 2: เชื่อม [username]
         if text.startswith('เชื่อม ') or text.startswith('เชื่อม'):
-            # ดึง username จากข้อความ
             parts = text.split(maxsplit=1)
             if len(parts) == 2:
                 username = parts[1].strip()
                 
                 try:
-                    # หา user จาก username
                     target_user = User.objects.get(username=username)
                     
-                    # สร้างหรือดึง NotificationSettings
                     settings_obj, created = NotificationSettings.objects.get_or_create(
                         user=target_user
                     )
                     
-                    # บันทึก LINE User ID
                     settings_obj.line_user_id = user_id
                     settings_obj.verification_code = None
                     settings_obj.save()
                     
-                    # ดึง profile เพื่อแสดงชื่อ
                     display_name = "คุณ"
                     try:
                         profile = line_service.line_bot_api.get_profile(user_id)
@@ -730,7 +712,7 @@ if LINE_AVAILABLE and line_service:
                 )
                 return
 
-        # ✅ Case 3: ขอรหัส/ช่วยเหลือ
+        # Case 3: ขอรหัส/ช่วยเหลือ
         triggers = ['ขอรหัส', 'รหัส', 'code', 'id', 'userid', 'help', 'ช่วย']
         
         if any(keyword in text.lower() for keyword in triggers):
@@ -747,9 +729,11 @@ if LINE_AVAILABLE and line_service:
                 "สวัสดีครับ! 👋\n\nวิธีเชื่อมต่อระบบ:\nพิมพ์: เชื่อม [username]\nตัวอย่าง: เชื่อม maxnalao11"
             )
 
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_connection_code(request):
+    """🔗 ขอรหัสเชื่อมต่อ LINE (6 หลัก)"""
     try:
         settings_obj, created = NotificationSettings.objects.get_or_create(user=request.user)
         
@@ -768,6 +752,7 @@ def get_connection_code(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_line_user_id(request):
+    """✅ เช็คสถานะการเชื่อมต่อ LINE"""
     try:
         settings_obj = NotificationSettings.objects.get(user=request.user)
         has_id = bool(settings_obj.line_user_id)
@@ -778,12 +763,12 @@ def get_line_user_id(request):
     except NotificationSettings.DoesNotExist:
         return Response({"has_user_id": False, "masked_user_id": ""})
 
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_connected_users(request):
-    """ดึงรายชื่อผู้ใช้ทั้งหมดที่เชื่อมต่อ LINE แล้ว"""
+    """👥 ดึงรายชื่อผู้ใช้ที่เชื่อมต่อ LINE แล้ว"""
     try:
-        # ดึง NotificationSettings ที่มี line_user_id
         connected_settings = NotificationSettings.objects.filter(
             line_user_id__isnull=False
         ).exclude(line_user_id='').select_related('user')
@@ -799,7 +784,6 @@ def get_connected_users(request):
                 'connected_at': setting.updated_at.isoformat() if hasattr(setting, 'updated_at') else None
             }
             
-            # ดึง LINE Profile ถ้าได้
             if LINE_AVAILABLE and line_service:
                 try:
                     profile_result = line_service.get_profile(setting.line_user_id)
@@ -809,7 +793,6 @@ def get_connected_users(request):
                 except Exception as e:
                     print(f"Error getting profile for {setting.user.username}: {e}")
             
-            # ถ้าไม่มี display_name ใช้ชื่อ user แทน
             if not user_data['display_name']:
                 user_data['display_name'] = setting.user.get_full_name() or setting.user.username
             
@@ -826,7 +809,7 @@ def get_connected_users(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def send_to_selected_users(request):
-    """ส่งข้อความไปยังผู้ใช้ที่เลือก"""
+    """📤 ส่งข้อความถึงผู้ใช้ที่เลือก"""
     if not LINE_AVAILABLE or not line_service:
         return Response({"error": "LINE service unavailable"}, status=503)
     
@@ -842,7 +825,6 @@ def send_to_selected_users(request):
     
     for user_id in user_ids:
         try:
-            # หา NotificationSettings ของ user
             setting = NotificationSettings.objects.get(user_id=user_id)
             
             if setting.line_user_id:
@@ -874,7 +856,7 @@ def send_to_selected_users(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def broadcast_message(request):
-    """ส่งข้อความถึงทุกคนที่เชื่อมต่อ LINE"""
+    """📢 ส่งข้อความถึงทุกคนที่เชื่อมต่อ LINE"""
     if not LINE_AVAILABLE or not line_service:
         return Response({"error": "LINE service unavailable"}, status=503)
     
@@ -883,7 +865,6 @@ def broadcast_message(request):
     if not message:
         return Response({"error": "Message is required"}, status=400)
     
-    # ดึงทุกคนที่มี LINE User ID
     connected_settings = NotificationSettings.objects.filter(
         line_user_id__isnull=False
     ).exclude(line_user_id='')
@@ -909,9 +890,11 @@ def broadcast_message(request):
         'total': connected_settings.count()
     })
 
+
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def delete_line_user_id(request):
+    """🔌 ยกเลิกการเชื่อมต่อ LINE"""
     try:
         settings_obj = NotificationSettings.objects.get(user=request.user)
         settings_obj.line_user_id = None
@@ -924,6 +907,7 @@ def delete_line_user_id(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def send_test_message(request):
+    """🧪 ส่งข้อความทดสอบ LINE"""
     if not LINE_AVAILABLE or not line_service:
         return Response({"error": "LINE service unavailable"}, status=503)
     
@@ -949,6 +933,7 @@ def send_test_message(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def send_low_stock_alerts(request):
+    """⚠️ ส่งแจ้งเตือนสินค้าใกล้หมด"""
     if not LINE_AVAILABLE: 
         return Response({"error": "Service unavailable"}, status=503)
     
@@ -976,6 +961,7 @@ def send_low_stock_alerts(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_line_profile(request):
+    """👤 ดึง LINE Profile"""
     try:
         settings_obj = NotificationSettings.objects.get(user=request.user)
         
@@ -992,6 +978,13 @@ def get_line_profile(request):
 # ==================== FESTIVAL VIEWSET ====================
 
 class FestivalViewSet(ModelViewSet):
+    """
+    🎉 จัดการเทศกาล
+    - สร้าง/แก้ไข/ลบเทศกาล
+    - ดูเทศกาลที่กำลังมาถึง (60 วัน)
+    - ดูปฏิทินเทศกาลตามเดือน/ปี
+    - ดูสินค้าขายดีของแต่ละเทศกาล
+    """
     queryset = Festival.objects.all()
     serializer_class = FestivalSerializer
     permission_classes = [AllowAny]
@@ -1022,11 +1015,6 @@ class FestivalViewSet(ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def calendar(self, request):
-        """
-        ✅ UPDATED: Removed 2-day warning notification
-        Get festivals for a specific month (calendar view)
-        Query params: year, month
-        """
         year = int(request.query_params.get('year', timezone.now().year))
         month = int(request.query_params.get('month', timezone.now().month))
 
@@ -1036,18 +1024,15 @@ class FestivalViewSet(ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Get first and last day of the month
         first_day = datetime(year, month, 1).date()
         if month == 12:
             last_day = datetime(year + 1, 1, 1).date() - timedelta(days=1)
         else:
             last_day = datetime(year, month + 1, 1).date() - timedelta(days=1)
 
-        # ✅ FIXED: Get festivals that overlap with this month
-        # (not just festivals starting in this month)
         festivals = Festival.objects.filter(
-            start_date__lte=last_day,  # Festival started on or before last day
-            end_date__gte=first_day     # Festival ended on or after first day
+            start_date__lte=last_day,
+            end_date__gte=first_day
         ).order_by('start_date')
 
         serializer = self.get_serializer(festivals, many=True)
@@ -1081,53 +1066,27 @@ class FestivalViewSet(ModelViewSet):
             'count': best_sellers.count()
         })
 
-    @action(detail=False, methods=['get'])
-    def with_best_sellers(self, request):
-        festivals = Festival.objects.prefetch_related('best_sellers').all()
-        serializer = self.get_serializer(festivals, many=True)
-        return Response({
-            'count': festivals.count(),
-            'results': serializer.data
-        })
-
-    @action(detail=True, methods=['get'])
-    def best_sellers(self, request, pk=None):
-        festival = self.get_object()
-        best_sellers = BestSeller.objects.filter(festival=festival).order_by('rank')
-
-        serializer = BestSellerDetailSerializer(best_sellers, many=True)
-        return Response({
-            'festival': FestivalSerializer(festival).data,
-            'best_sellers': serializer.data,
-            'count': best_sellers.count()
-        })
-
 
 # ==================== BEST SELLER VIEWSET ====================
 
-# inventory/views.py - BestSellerViewSet class
-# Replace the top_products method completely
-
 class BestSellerViewSet(ModelViewSet):
-    """ViewSet สำหรับจัดการ Best Sellers"""
+    """
+    🏆 วิเคราะห์สินค้าขายดี
+    - ดู Top N สินค้าขายดี (แยกตามช่วงเวลา)
+    - คาดการณ์สินค้าสำหรับเทศกาลถัดไป
+    - วิเคราะห์สินค้าขายดีตามหมวดหมู่
+    - บันทึกสินค้าขายดีเป็นกลุ่ม
+    """
     queryset = BestSeller.objects.all()
     serializer_class = BestSellerSerializer
     permission_classes = [AllowAny]
 
     @action(detail=False, methods=['get'])
     def top_products(self, request):
-        """ดึง Top N สินค้าขายดี - เรียงตามยอดเบิกจากมากไปน้อย
-        
-        ✅ Filter: เฉพาะสินค้าที่เบิก >= 40 ชิ้น
-        """
         period = request.query_params.get('period', 'month')
         limit = int(request.query_params.get('limit', 10))
-        
-        # ✅ รองรับ custom date range
         start_date_str = request.query_params.get('start_date')
         end_date_str = request.query_params.get('end_date')
-        
-        # ✅ Minimum threshold (40 ชิ้น)
         min_qty = int(request.query_params.get('min_qty', 25))
 
         if limit < 1 or limit > 100:
@@ -1135,23 +1094,20 @@ class BestSellerViewSet(ModelViewSet):
 
         today = timezone.now().date()
 
-        # ✅ FIXED - เปลี่ยนให้ '1days' = 24 ชั่วโมงล่าสุด
         period_map = {
             'all': None,
             'year': today - timedelta(days=365),
             'month': today - timedelta(days=30),
-            '1days': timezone.now() - timedelta(hours=24),  # ✅ 24 ชั่วโมงล่าสุด
+            '1days': timezone.now() - timedelta(hours=24),
             '7days': today - timedelta(days=7),
         }
 
-        # ✅ ถ้ามี custom date range ให้ใช้แทน
         if period == 'custom' and start_date_str and end_date_str:
             try:
                 from datetime import datetime as dt
                 start_date = dt.strptime(start_date_str, '%Y-%m-%d').date()
                 end_date = dt.strptime(end_date_str, '%Y-%m-%d').date()
                 
-                # เปลี่ยน end_date เป็นสิ้นวันนั้น
                 end_datetime = timezone.make_aware(
                     dt.combine(end_date, dt.max.time())
                 )
@@ -1170,22 +1126,17 @@ class BestSellerViewSet(ModelViewSet):
             start_datetime = period_map.get(period)
 
             if start_datetime:
-                # ✅ ถ้า period = '1days' ใช้ datetime comparison, ไม่เช่นใช้ date
                 if period == '1days':
-                    # ใช้ datetime comparison สำหรับ 24 ชั่วโมง
                     issue_data = IssueLine.objects.filter(
                         issue__created_at__gte=start_datetime
                     )
                 else:
-                    # ใช้ date comparison สำหรับอื่นๆ
                     issue_data = IssueLine.objects.filter(
                         issue__created_at__date__gte=start_datetime
                     )
             else:
                 issue_data = IssueLine.objects.all()
 
-        # ✅ เรียงลำดับตามยอดเบิก (total_issued) จากมากไปน้อย
-        # ✅ Filter: เฉพาะ total_issued >= min_qty (default 40)
         top_products = issue_data.values('product').annotate(
             total_issued=Sum('qty'),
             transactions=Count('id')
@@ -1220,7 +1171,6 @@ class BestSellerViewSet(ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def festival_forecast(self, request):
-        """ดึงข้อมูล Festival Forecast สำหรับเทศกาลที่มาถึง"""
         today = timezone.now().date()
 
         upcoming_festival = Festival.objects.filter(
@@ -1276,7 +1226,6 @@ class BestSellerViewSet(ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def category_analysis(self, request):
-        """วิเคราะห์สินค้าขายดีตามหมวดหมู่"""
         festival_id = request.query_params.get('festival_id')
 
         if not festival_id:
@@ -1325,7 +1274,6 @@ class BestSellerViewSet(ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def bulk_create(self, request):
-        """สร้าง Best Seller records หลายรายการพร้อมกัน"""
         try:
             festival_id = request.data.get('festival_id')
             best_sellers_data = request.data.get('best_sellers', [])
@@ -1368,54 +1316,17 @@ class BestSellerViewSet(ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-    @action(detail=False, methods=['post'])
-    def bulk_create(self, request):
-        """สร้าง Best Seller records หลายรายการพร้อมกัน"""
-        try:
-            festival_id = request.data.get('festival_id')
-            best_sellers_data = request.data.get('best_sellers', [])
-
-            festival = Festival.objects.get(id=festival_id)
-            created_count = 0
-
-            for data in best_sellers_data:
-                try:
-                    product = Product.objects.get(id=data['product_id'])
-                    bs, created = BestSeller.objects.update_or_create(
-                        product=product,
-                        festival=festival,
-                        defaults={
-                            'total_issued': data.get('total_issued', 0),
-                            'rank': data.get('rank', 0),
-                            'last_year_count': data.get('last_year_count', 0),
-                            'this_year_count': data.get('total_issued', 0)
-                        }
-                    )
-                    if created:
-                        created_count += 1
-                except Product.DoesNotExist:
-                    continue
-
-            return Response({
-                'festival_id': festival_id,
-                'created': created_count,
-                'total': len(best_sellers_data)
-            }, status=status.HTTP_201_CREATED)
-
-        except Festival.DoesNotExist:
-            return Response(
-                {'error': 'Festival not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
 
 # ==================== DASHBOARD VIEWSETS ====================
 
 class EmployeeDashboardViewSet(ModelViewSet):
+    """
+    📊 แดชบอร์ดสำหรับพนักงาน
+    - จำนวนสินค้า, สต็อกต่ำ
+    - ยอดขายวันนี้
+    - เทศกาลที่กำลังมาถึง
+    - สินค้าขายดีวันนี้
+    """
     permission_classes = [IsEmployee]
     http_method_names = ['get']
     queryset = Product.objects.none()
@@ -1467,6 +1378,12 @@ class EmployeeDashboardViewSet(ModelViewSet):
 
 
 class AdminDashboardViewSet(ModelViewSet):
+    """
+    💼 แดชบอร์ดสำหรับ Admin
+    - ข้อมูลการเงิน (มูลค่าสต็อก, กำไร)
+    - สถิติแยกตามหมวดหมู่
+    - สินค้ามูลค่าสูงสุด
+    """
     permission_classes = [IsAdmin]
     http_method_names = ['get']
     queryset = Product.objects.none()
@@ -1523,41 +1440,59 @@ class AdminDashboardViewSet(ModelViewSet):
         return Response({
             'top_products': list(top_products)
         })
-    
+
+
+# ==================== CUSTOM EVENT VIEWSET ====================
 
 class CustomEventViewSet(viewsets.ModelViewSet):
     """
-    API สำหรับจัดการบันทึกของฉัน (Custom Events)
+    ระบบจัดการบันทึกส่วนตัว
     
-    GET /custom-events/ - ดูรายการทั้งหมด
-    POST /custom-events/ - สร้างใหม่
-    GET /custom-events/{id}/ - ดูรายละเอียด
-    PUT /custom-events/{id}/ - แก้ไข
-    DELETE /custom-events/{id}/ - ลบ
-    GET /custom-events/my_events/ - ดูเฉพาะของตัวเอง
-    GET /custom-events/calendar/ - ดูตามเดือน/ปี
+    ฟังก์ชัน:
+    - สร้างบันทึก/เหตุการณ์ส่วนตัว
+    - กำหนดวันที่และระดับความสำคัญ
+    - แชร์บันทึกให้คนอื่นเห็นได้
+    - ดูบันทึกตามเดือน/ปี (แบบปฏิทิน)
+    - ดูบันทึกที่กำลังมาถึง
+    
+    ประเภทบันทึก:
+    - Personal (ส่วนตัว)
+    - Work (งาน)
+    - Meeting (ประชุม)
+    - Reminder (เตือนความจำ)
+    
+    สิทธิ์:
+    - ดูได้: บันทึกตัวเอง + บันทึกที่แชร์
+    - แก้ไข/ลบได้: เฉพาะบันทึกตัวเอง (หรือ Admin)
     """
-    
     serializer_class = CustomEventSerializer
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        """
-        แสดง events ที่:
-        1. เป็นของตัวเอง (created_by = current user)
-        2. หรือ แชร์ให้ทุกคน (is_shared = True)
-        """
         user = self.request.user
         return CustomEvent.objects.filter(
             Q(created_by=user) | Q(is_shared=True)
         ).distinct()
     
     def perform_create(self, serializer):
-        """บันทึก created_by เป็น user ปัจจุบัน"""
-        serializer.save(created_by=self.request.user)
+        """
+        บันทึก CustomEvent
+        - ถ้า Admin สร้าง → แชร์อัตโนมัติ (is_shared=True)
+        - ถ้าพนักงานสร้าง → ไม่แชร์ (is_shared=False)
+        """
+        user = self.request.user
+        
+        # ✅ ถ้า Admin สร้าง → แชร์อัตโนมัติ
+        if user.is_superuser or user.is_staff:
+            serializer.save(
+                created_by=user,
+                is_shared=True  # ✅ แชร์ให้ทุกคนเห็น
+            )
+        else:
+            serializer.save(created_by=user)
     
     def perform_update(self, serializer):
-        """เช็คว่าเป็นเจ้าของก่อนแก้ไข"""
+        """ฟังก์ชัน: เช็คสิทธิ์ก่อนแก้ไข"""
         instance = self.get_object()
         if instance.created_by != self.request.user and not self.request.user.is_staff:
             from rest_framework.exceptions import PermissionDenied
@@ -1565,7 +1500,7 @@ class CustomEventViewSet(viewsets.ModelViewSet):
         serializer.save()
     
     def perform_destroy(self, instance):
-        """เช็คว่าเป็นเจ้าของก่อนลบ"""
+        """ฟังก์ชัน: เช็คสิทธิ์ก่อนลบ"""
         if instance.created_by != self.request.user and not self.request.user.is_staff:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("คุณไม่มีสิทธิ์ลบรายการนี้")
@@ -1573,17 +1508,14 @@ class CustomEventViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def my_events(self, request):
-        """GET /custom-events/my_events/ - ดูเฉพาะของตัวเอง"""
+        """ฟังก์ชันดูบันทึกของตัวเอง"""
         queryset = CustomEvent.objects.filter(created_by=request.user)
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
     
     @action(detail=False, methods=['get'])
     def calendar(self, request):
-        """
-        GET /custom-events/calendar/?year=2026&month=1
-        ดู events ตามเดือน/ปี
-        """
+        """ฟังก์ชันดูบันทึกตามเดือน/ปี (แสดงแบบปฏิทิน)"""
         year = request.query_params.get('year')
         month = request.query_params.get('month')
         
@@ -1604,10 +1536,32 @@ class CustomEventViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def upcoming(self, request):
-        """GET /custom-events/upcoming/ - ดู events ที่กำลังจะมาถึง"""
-        from django.utils import timezone
+        """ฟังก์ชันดูบันทึกที่กำลังมาถึง (10 รายการแรก)"""
+        today = timezone.now().date()
+        queryset = self.get_queryset().filter(date__gte=today).order_by('date')[:10]
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    # ✅ ✅ ✅ เพิ่ม Action ใหม่นี้ ✅ ✅ ✅
+    @action(detail=False, methods=['get'])
+    def upcoming_shared(self, request):
+        """
+        ฟังก์ชันดูบันทึกที่แชร์ที่กำลังมาถึง (สำหรับ Dashboard)
+        
+        ใช้สำหรับ:
+        - แสดงบันทึกของ Admin ในหน้า Dashboard พนักงาน
+        - แสดงเฉพาะบันทึกที่ is_shared=True
+        - แสดง 10 รายการถัดไป
+        
+        API Endpoint: GET /api/custom-events/upcoming_shared/
+        """
         today = timezone.now().date()
         
-        queryset = self.get_queryset().filter(date__gte=today).order_by('date')[:10]
+        # ✅ ดึงเฉพาะบันทึกที่แชร์
+        queryset = CustomEvent.objects.filter(
+            is_shared=True,  # ✅ เฉพาะที่แชร์
+            date__gte=today   # ✅ วันนี้เป็นต้นไป
+        ).select_related('created_by').order_by('date')[:10]
+        
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)

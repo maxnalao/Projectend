@@ -1,8 +1,8 @@
 // src/pages/EmployeeDashboard.jsx
-// ✅ ใช้ Tailwind CSS - ลด emoji ให้ดูเป็นมืออาชีพ
+// ✅ แก้ไข: เพิ่มการแสดงบันทึกของ Admin ใน FestivalCalendar
 import React, { useEffect, useState } from 'react';
 import api from '../api';
-import FestivalCalendar from '../components/FestivalCalendar';
+import FestivalCalendarEmployee from '../components/FestivalCalendarEmployee';  // ✅ ใช้ Employee version
 import FestivalNoticeCard from '../components/FestivalNoticeCard';
 
 const EmployeeDashboard = () => {
@@ -19,11 +19,15 @@ const EmployeeDashboard = () => {
     pending: 0,
   });
 
+  // ✅ เพิ่ม state สำหรับบันทึกของ Admin
+  const [adminEvents, setAdminEvents] = useState([]);
+
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchDashboardData();
     fetchTasksData();
+    fetchAdminEvents(); // ✅ เรียกฟังก์ชันดึงบันทึกของ Admin
   }, []);
 
   const fetchDashboardData = async () => {
@@ -61,6 +65,20 @@ const EmployeeDashboard = () => {
       });
     } catch (error) {
       console.error('Error fetching tasks:', error);
+    }
+  };
+
+  // ✅ ฟังก์ชันดึงบันทึกของ Admin
+  const fetchAdminEvents = async () => {
+    try {
+      console.log('🔍 กำลังดึงข้อมูล Admin Events...');
+      const response = await api.get('/custom-events/upcoming_shared/');
+      console.log('✅ Admin Events ที่ได้:', response.data);
+      setAdminEvents(response.data || []);
+    } catch (error) {
+      console.error('❌ Error fetching admin events:', error);
+      // ถ้า API ยังไม่มี ให้ใช้ค่าว่าง
+      setAdminEvents([]);
     }
   };
 
@@ -291,8 +309,10 @@ const EmployeeDashboard = () => {
         </div>
 
         {/* Festival Calendar - Right Side */}
+        {/* ✅ ส่ง adminEvents ไปให้ FestivalCalendarEmployee */}
         <div>
-          <FestivalCalendar />
+          {console.log('📦 ส่ง adminEvents ไปให้ Calendar:', adminEvents)}
+          <FestivalCalendarEmployee adminEvents={adminEvents} />
         </div>
       </div>
     </div>
