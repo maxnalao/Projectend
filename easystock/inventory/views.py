@@ -1,6 +1,7 @@
-# inventory/views.py
-from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
+# inventory/views.py (CLEANED VERSION - ลบโค้ดที่ไม่ใช้แล้ว)
+
 from rest_framework import viewsets, status
+from rest_framework.viewsets import ReadOnlyModelViewSet
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser 
 from rest_framework.decorators import api_view, permission_classes, action
@@ -22,14 +23,12 @@ User = get_user_model()
 
 from .models import (
     Product, Category, Issue, IssueLine, Listing,
-    Festival, BestSeller, FestivalForecast, ForecastProduct, 
-    Task, CustomEvent
+    Festival, BestSeller, Task, CustomEvent
 )
 
 from .serializers import (
     ProductSerializer, CategorySerializer, ListingSerializer,
     FestivalSerializer, BestSellerSerializer, BestSellerDetailSerializer,
-    FestivalForecastSerializer, ForecastProductSerializer,
     FestivalWithBestSellersSerializer, TaskSerializer, UserSerializer,
     CustomEventSerializer
 )
@@ -86,23 +85,28 @@ class UserViewSet(ReadOnlyModelViewSet):
 
 # ==================== PRODUCT VIEWSET ====================
 
-class ProductViewSet(ModelViewSet):
+class ProductViewSet(viewsets.ModelViewSet):
     """
     📦 จัดการสินค้าในคลัง
     """
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]  # ✅ แก้จาก AllowAny
     serializer_class = ProductSerializer
     parser_classes = [MultiPartParser, FormParser] 
 
     def get_queryset(self):
-        qs = Product.objects.select_related("category", "created_by","listing").filter(is_deleted=False)
+        qs = Product.objects.select_related(
+            "category", "created_by", "listing"
+        ).filter(is_deleted=False)
+        
         show_empty = self.request.query_params.get("show_empty", "0")
         if str(show_empty).lower() not in ("1", "true", "yes"):
             qs = qs.filter(stock__gt=0)
 
         search = self.request.query_params.get("search")
         if search:
-            qs = qs.filter(Q(name__icontains=search) | Q(code__icontains=search))
+            qs = qs.filter(
+                Q(name__icontains=search) | Q(code__icontains=search)
+            )
 
         cat = self.request.query_params.get("category")
         if cat:
@@ -128,12 +132,15 @@ class ProductViewSet(ModelViewSet):
         
         if LINE_AVAILABLE and line_service:
             try:
-                settings_obj = NotificationSettings.objects.get(user=request.user)
+                settings_obj = NotificationSettings.objects.get(
+                    user=request.user
+                )
                 user_id = settings_obj.line_user_id
                 
                 if user_id:
                     line_service.send_stock_in_notification(
-                        user_id, product.name, product.code, product.stock, product.unit
+                        user_id, product.name, product.code, 
+                        product.stock, product.unit
                     )
             except NotificationSettings.DoesNotExist:
                 pass
@@ -156,24 +163,33 @@ class ProductViewSet(ModelViewSet):
         
         if stock_change != 0 and LINE_AVAILABLE and line_service:
             try:
-                settings_obj = NotificationSettings.objects.get(user=request.user)
+                settings_obj = NotificationSettings.objects.get(
+                    user=request.user
+                )
                 user_id = settings_obj.line_user_id
                 
                 if user_id:
                     product = Product.objects.get(id=response.data['id'])
-                    updated_by = request.user.get_full_name() or request.user.username
+                    updated_by = (
+                        request.user.get_full_name() or 
+                        request.user.username
+                    )
                     
                     if stock_change > 0:
                         line_service.send_stock_in_notification(
-                            user_id, product.name, product.code, stock_change, product.unit
+                            user_id, product.name, product.code, 
+                            stock_change, product.unit
                         )
                         
                         if product.stock < 5 and product.stock > 0:
                             line_service.send_low_stock_alert(
-                                user_id, product.name, product.code, product.stock, product.unit
+                                user_id, product.name, product.code, 
+                                product.stock, product.unit
                             )
                     else:
-                        line_service.send_text_message(user_id, f"""📉 ปรับปรุงสต็อก
+                        line_service.send_text_message(
+                            user_id, 
+                            f"""📉 ปรับปรุงสต็อก
 
 📦 สินค้า: {product.name}
 🔖 รหัส: {product.code}
@@ -181,10 +197,13 @@ class ProductViewSet(ModelViewSet):
 📊 คงเหลือ: {new_stock} {product.unit}
 👤 ปรับปรุงโดย: {updated_by}
 
-บันทึกเรียบร้อยแล้ว""")
+บันทึกเรียบร้อยแล้ว"""
+                        )
                         
                         if new_stock == 0:
-                            line_service.send_out_of_stock_alert(user_id, product.name, product.code)
+                            line_service.send_out_of_stock_alert(
+                                user_id, product.name, product.code
+                            )
             except NotificationSettings.DoesNotExist:
                 pass
             except Exception as e:
@@ -201,7 +220,7 @@ class ProductViewSet(ModelViewSet):
 
 # ==================== CATEGORY VIEWSET ====================
 
-class CategoryViewSet(ModelViewSet):
+class CategoryViewSet(viewsets.ModelViewSet):
     """
     📂 จัดการหมวดหมู่สินค้า
     - เพิ่ม/แก้ไข/ลบหมวดหมู่
@@ -209,21 +228,23 @@ class CategoryViewSet(ModelViewSet):
     """
     queryset = Category.objects.all().order_by("name")
     serializer_class = CategorySerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]  # ✅ แก้จาก AllowAny
 
 
 # ==================== LISTING VIEWSET ====================
 
-class ListingViewSet(ModelViewSet):
+class ListingViewSet(viewsets.ModelViewSet):
     """
     🏪 จัดการสินค้าที่แสดงขาย
     - สินค้าที่เบิกออกมาขายแล้ว
     - รองรับการค้นหาและกรอง
     - ปิด/เปิดการแสดงขาย
     """
-    queryset = Listing.objects.select_related("product", "product__category").filter(product__is_deleted=False)
+    queryset = Listing.objects.select_related(
+        "product", "product__category"
+    ).filter(product__is_deleted=False)
     serializer_class = ListingSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]  # ✅ แก้จาก AllowAny
     parser_classes = [MultiPartParser, FormParser] 
     http_method_names = ["get", "patch", "post", "delete"]
 
@@ -253,7 +274,7 @@ class ListingViewSet(ModelViewSet):
         instance = self.get_object()
         serializer.save(product=instance.product)
 
-    @action(detail=True, methods=["post","patch"])
+    @action(detail=True, methods=["post", "patch"])
     def unlist(self, request, pk=None):
         obj = self.get_object()
         if obj.is_active:
@@ -269,7 +290,7 @@ class ListingViewSet(ModelViewSet):
 
 # ==================== TASK VIEWSET ====================
 
-class TaskViewSet(ModelViewSet):
+class TaskViewSet(viewsets.ModelViewSet):
     """
     📋 จัดการงานที่มอบหมาย
     """
@@ -281,12 +302,16 @@ class TaskViewSet(ModelViewSet):
         if user.is_staff or user.is_superuser:
             return Task.objects.all().order_by('-due_date')
         else:
-            return Task.objects.filter(assigned_to=user).order_by('-due_date')
+            return Task.objects.filter(
+                assigned_to=user
+            ).order_by('-due_date')
     
     @action(detail=False, methods=['get'])
     def my_tasks(self, request):
         user = request.user
-        tasks = Task.objects.filter(assigned_to=user).order_by('-due_date')
+        tasks = Task.objects.filter(
+            assigned_to=user
+        ).order_by('-due_date')
         
         pending = tasks.filter(status='pending')
         in_progress = tasks.filter(status='in_progress')
@@ -322,12 +347,19 @@ class TaskViewSet(ModelViewSet):
         if status_choice in dict(Task.STATUS_CHOICES):
             task.status = status_choice
             if notes:
-                task.notes = (task.notes or '') + f"\n[{timezone.now()}] {notes}"
+                current_notes = task.notes or ''
+                task.notes = (
+                    f"{current_notes}\n"
+                    f"[{timezone.now()}] {notes}"
+                )
             
             task.save()
             return Response(TaskSerializer(task).data)
         else:
-            return Response({'error': 'Invalid status'}, status=400)
+            return Response(
+                {'error': 'Invalid status'}, 
+                status=400
+            )
 
 
 # ==================== API FUNCTIONS ====================
@@ -343,7 +375,10 @@ def issue_products(request):
     """
     items = request.data.get("items", [])
     if not isinstance(items, list) or not items:
-        return Response({"detail": "items is required"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"detail": "items is required"}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
     with transaction.atomic():
         issue = Issue.objects.create(created_by=request.user)
@@ -352,69 +387,107 @@ def issue_products(request):
         for it in items:
             pid = int(it.get("product", 0) or 0)
             qty = int(it.get("qty", 0) or 0)
-            if pid <= 0 or qty <= 0: continue
+            if pid <= 0 or qty <= 0:
+                continue
 
             try:
-                p = Product.objects.select_for_update().get(id=pid, is_deleted=False)
+                p = Product.objects.select_for_update().get(
+                    id=pid, is_deleted=False
+                )
             except ObjectDoesNotExist:
-                return Response({"detail": f"product {pid} not found"}, status=status.HTTP_404_NOT_FOUND)
+                return Response(
+                    {"detail": f"product {pid} not found"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
 
             if p.stock < qty:
-                return Response({"detail": f"stock not enough for product {p.code}"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response(
+                    {"detail": f"stock not enough for product {p.code}"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
             p.stock = F("stock") - qty
             p.on_sale = True
-            p.save(update_fields=["stock","on_sale"])
+            p.save(update_fields=["stock", "on_sale"])
 
             IssueLine.objects.create(issue=issue, product=p, qty=qty)
 
             listing, created = Listing.objects.get_or_create(
                 product=p,
-                defaults={"is_active": True, "title": p.name, "sale_price": p.selling_price, "unit": p.unit, "quantity": qty}
+                defaults={
+                    "is_active": True, 
+                    "title": p.name, 
+                    "sale_price": p.selling_price, 
+                    "unit": p.unit, 
+                    "quantity": qty
+                }
             )
             if not created:
                 listing.quantity = F("quantity") + qty
                 listing.is_active = True
-                listing.save(update_fields=["quantity","is_active"])
+                listing.save(update_fields=["quantity", "is_active"])
 
-            p.refresh_from_db(fields=["stock","on_sale"])
+            p.refresh_from_db(fields=["stock", "on_sale"])
             updated_products.append(p)
             
             if LINE_AVAILABLE and line_service:
                 try:
-                    settings_obj = NotificationSettings.objects.get(user=request.user)
+                    settings_obj = NotificationSettings.objects.get(
+                        user=request.user
+                    )
                     user_id = settings_obj.line_user_id
                     
                     if user_id:
-                        issued_by = request.user.get_full_name() or request.user.username
-                        line_service.send_stock_out_notification(user_id, p.name, p.code, qty, p.unit, issued_by)
+                        issued_by = (
+                            request.user.get_full_name() or 
+                            request.user.username
+                        )
+                        line_service.send_stock_out_notification(
+                            user_id, p.name, p.code, qty, 
+                            p.unit, issued_by
+                        )
 
                         if p.stock == 0:
-                            line_service.send_out_of_stock_alert(user_id, p.name, p.code)
+                            line_service.send_out_of_stock_alert(
+                                user_id, p.name, p.code
+                            )
                         elif p.stock < 5:
-                            line_service.send_low_stock_alert(user_id, p.name, p.code, p.stock, p.unit)
+                            line_service.send_low_stock_alert(
+                                user_id, p.name, p.code, 
+                                p.stock, p.unit
+                            )
                 except Exception as e:
                     print(f"Error sending LINE notification: {e}")
 
     return Response(
-        ProductSerializer(updated_products, many=True, context={"request": request}).data,
+        ProductSerializer(
+            updated_products, 
+            many=True, 
+            context={"request": request}
+        ).data,
         status=status.HTTP_201_CREATED
     )
 
 
 @api_view(["POST", "PATCH", "DELETE"])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])  # ✅ แก้จาก AllowAny
 def product_unlist(request, pk: int):
     """❌ ยกเลิกการแสดงขายสินค้า"""
     try:
         product = Product.objects.get(pk=pk, is_deleted=False)
     except Product.DoesNotExist:
-        return Response({"detail": "ไม่พบสินค้า"}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {"detail": "ไม่พบสินค้า"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
 
     try:
         listing = product.listing
     except Listing.DoesNotExist:
-        return Response({"detail": "สินค้านี้ยังไม่มีรายการในหน้าแสดง"}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {"detail": "สินค้านี้ยังไม่มีรายการในหน้าแสดง"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
 
     listing.delete()
     if product.on_sale:
@@ -425,7 +498,7 @@ def product_unlist(request, pk: int):
 
 
 @api_view(["GET"])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])  # ✅ แก้จาก AllowAny
 def dashboard_stats(request):
     """
     📊 สถิติแดชบอร์ด
@@ -436,6 +509,7 @@ def dashboard_stats(request):
     """
     from zoneinfo import ZoneInfo
     from datetime import time
+    
     bangkok_tz = ZoneInfo('Asia/Bangkok')
     now = timezone.now().astimezone(bangkok_tz)
     today = now.date()
@@ -445,9 +519,18 @@ def dashboard_stats(request):
     products = Product.objects.filter(is_deleted=False)
     total_stock = products.aggregate(total=Sum("stock"))["total"] or 0
     
-    low_qs = Product.objects.filter(is_deleted=False, stock__gt=0, stock__lt=5)
-    in_today = Product.objects.filter(is_deleted=False, created_at__gte=start, created_at__lte=end).count()
-    out_today = IssueLine.objects.filter(issue__created_at__gte=start, issue__created_at__lte=end).aggregate(total=Sum("qty"))["total"] or 0
+    low_qs = Product.objects.filter(
+        is_deleted=False, stock__gt=0, stock__lt=5
+    )
+    in_today = Product.objects.filter(
+        is_deleted=False, 
+        created_at__gte=start, 
+        created_at__lte=end
+    ).count()
+    out_today = IssueLine.objects.filter(
+        issue__created_at__gte=start, 
+        issue__created_at__lte=end
+    ).aggregate(total=Sum("qty"))["total"] or 0
 
     total_inventory_value = 0
     for p in products:
@@ -456,19 +539,82 @@ def dashboard_stats(request):
 
     low_items = []
     for p in low_qs.order_by("stock")[:10]:
-        img = request.build_absolute_uri(p.image.url) if p.image else None
-        low_items.append({"id": p.id, "code": p.code, "name": p.name, "stock": p.stock, "unit": p.unit, "image_url": img})
+        img = (
+            request.build_absolute_uri(p.image.url) 
+            if p.image 
+            else None
+        )
+        low_items.append({
+            "id": p.id, 
+            "code": p.code, 
+            "name": p.name, 
+            "stock": p.stock, 
+            "unit": p.unit, 
+            "image_url": img
+        })
 
     all_mv = []
-    issued = IssueLine.objects.select_related("issue","product").filter(issue__created_at__gte=start, issue__created_at__lte=end)
-    for l in issued: all_mv.append({'datetime':l.issue.created_at, 'id':f'out_{l.id}', 'date':l.issue.created_at.isoformat(), 'code':l.product.code, 'name':l.product.name, 'type':'out', 'qty':l.qty})
-    received = Product.objects.filter(is_deleted=False, created_at__gte=start, created_at__lte=end)
-    for p in received: all_mv.append({'datetime':p.created_at, 'id':f'in_{p.id}', 'date':p.created_at.isoformat(), 'code':p.code, 'name':p.name, 'type':'in', 'qty':p.initial_stock or p.stock})
-    all_mv.sort(key=lambda x:x['datetime'], reverse=True)
-    movements = [{'id':m['id'], 'date':m['date'], 'code':m['code'], 'name':m['name'], 'type':m['type'], 'qty':m['qty']} for m in all_mv[:20]]
+    issued = IssueLine.objects.select_related(
+        "issue", "product"
+    ).filter(
+        issue__created_at__gte=start, 
+        issue__created_at__lte=end
+    )
+    for l in issued:
+        all_mv.append({
+            'datetime': l.issue.created_at, 
+            'id': f'out_{l.id}', 
+            'date': l.issue.created_at.isoformat(), 
+            'code': l.product.code, 
+            'name': l.product.name, 
+            'type': 'out', 
+            'qty': l.qty
+        })
+    
+    received = Product.objects.filter(
+        is_deleted=False, 
+        created_at__gte=start, 
+        created_at__lte=end
+    )
+    for p in received:
+        all_mv.append({
+            'datetime': p.created_at, 
+            'id': f'in_{p.id}', 
+            'date': p.created_at.isoformat(), 
+            'code': p.code, 
+            'name': p.name, 
+            'type': 'in', 
+            'qty': p.initial_stock or p.stock
+        })
+    
+    all_mv.sort(key=lambda x: x['datetime'], reverse=True)
+    movements = [
+        {
+            'id': m['id'], 
+            'date': m['date'], 
+            'code': m['code'], 
+            'name': m['name'], 
+            'type': m['type'], 
+            'qty': m['qty']
+        } 
+        for m in all_mv[:20]
+    ]
 
-    cats = Product.objects.filter(is_deleted=False).values('category__name').annotate(count=Count('id'), total_stock=Sum('stock')).order_by('-count')
-    cat_list = [{'category':c['category__name'] or 'ไม่ระบุ', 'count':c['count'], 'total_stock':c['total_stock'] or 0} for c in cats]
+    cats = Product.objects.filter(is_deleted=False).values(
+        'category__name'
+    ).annotate(
+        count=Count('id'), 
+        total_stock=Sum('stock')
+    ).order_by('-count')
+    
+    cat_list = [
+        {
+            'category': c['category__name'] or 'ไม่ระบุ', 
+            'count': c['count'], 
+            'total_stock': c['total_stock'] or 0
+        } 
+        for c in cats
+    ]
 
     return Response({
         "total_products": total_stock,
@@ -505,21 +651,27 @@ def movement_history(request):
     def get_profile_image_url(user):
         if not user:
             return None
-        if hasattr(user, 'profile_image') and user.profile_image:
-            try:
-                return request.build_absolute_uri(user.profile_image.url)
-            except:
-                pass
-        if hasattr(user, 'profile') and hasattr(user.profile, 'image') and user.profile.image:
-            try:
-                return request.build_absolute_uri(user.profile.image.url)
-            except:
-                pass
-        if hasattr(user, 'avatar') and user.avatar:
-            try:
-                return request.build_absolute_uri(user.avatar.url)
-            except:
-                pass
+        
+        # ตรวจสอบ field ต่างๆ ที่อาจเก็บรูป profile
+        for field_name in ['profile_image', 'avatar']:
+            if hasattr(user, field_name):
+                field = getattr(user, field_name)
+                if field:
+                    try:
+                        return request.build_absolute_uri(field.url)
+                    except:
+                        pass
+        
+        # ตรวจสอบ related profile model
+        if hasattr(user, 'profile') and hasattr(user.profile, 'image'):
+            if user.profile.image:
+                try:
+                    return request.build_absolute_uri(
+                        user.profile.image.url
+                    )
+                except:
+                    pass
+        
         return None
     
     def get_user_display_name(user):
@@ -531,7 +683,11 @@ def movement_history(request):
         return user.username
     
     if movement_type in ['all', 'out']:
-        issues = Issue.objects.select_related('created_by').prefetch_related('lines__product').order_by('-created_at')
+        issues = Issue.objects.select_related(
+            'created_by'
+        ).prefetch_related(
+            'lines__product'
+        ).order_by('-created_at')
         
         if start_date:
             issues = issues.filter(created_at__date__gte=start_date)
@@ -540,8 +696,10 @@ def movement_history(request):
         
         for issue in issues:
             for line in issue.lines.all():
-                if search and search.lower() not in line.product.name.lower() and search.lower() not in line.product.code.lower():
-                    continue
+                if search:
+                    if (search.lower() not in line.product.name.lower() and 
+                        search.lower() not in line.product.code.lower()):
+                        continue
                 
                 user = issue.created_by
                 movements.append({
@@ -574,7 +732,11 @@ def movement_history(request):
             products = products.filter(created_at__date__lte=end_date)
         
         for product in products:
-            user = product.created_by if hasattr(product, 'created_by') else None
+            user = (
+                product.created_by 
+                if hasattr(product, 'created_by') 
+                else None
+            )
             
             movements.append({
                 'id': f'in-{product.id}',
@@ -638,20 +800,25 @@ if LINE_AVAILABLE and line_service:
         print("📩 MESSAGE RECEIVED!")
         print(f"Text: {event.message.text}")
         print(f"User ID: {event.source.user_id}")
+        
         user_id = event.source.user_id
         text = event.message.text.strip()
         
         # Case 1: รหัส 6 หลัก
         if len(text) == 6 and text.isdigit():
             try:
-                settings_obj = NotificationSettings.objects.get(verification_code=text)
+                settings_obj = NotificationSettings.objects.get(
+                    verification_code=text
+                )
                 settings_obj.line_user_id = user_id
                 settings_obj.verification_code = None
                 settings_obj.save()
                 
                 line_service.send_text_message(
                     user_id,
-                    f"✅ เชื่อมต่อสำเร็จ!\nสวัสดีคุณ {settings_obj.user.username}\nระบบพร้อมแจ้งเตือนแล้วครับ"
+                    f"✅ เชื่อมต่อสำเร็จ!\n"
+                    f"สวัสดีคุณ {settings_obj.user.username}\n"
+                    f"ระบบพร้อมแจ้งเตือนแล้วครับ"
                 )
             except NotificationSettings.DoesNotExist:
                 line_service.send_text_message(
@@ -669,8 +836,10 @@ if LINE_AVAILABLE and line_service:
                 try:
                     target_user = User.objects.get(username=username)
                     
-                    settings_obj, created = NotificationSettings.objects.get_or_create(
-                        user=target_user
+                    settings_obj, created = (
+                        NotificationSettings.objects.get_or_create(
+                            user=target_user
+                        )
                     )
                     
                     settings_obj.line_user_id = user_id
@@ -679,7 +848,9 @@ if LINE_AVAILABLE and line_service:
                     
                     display_name = "คุณ"
                     try:
-                        profile = line_service.line_bot_api.get_profile(user_id)
+                        profile = line_service.line_bot_api.get_profile(
+                            user_id
+                        )
                         display_name = profile.display_name
                     except:
                         pass
@@ -702,18 +873,23 @@ if LINE_AVAILABLE and line_service:
                 except User.DoesNotExist:
                     line_service.send_text_message(
                         user_id,
-                        f"❌ ไม่พบผู้ใช้ '{username}' ในระบบ\nกรุณาตรวจสอบ username อีกครั้ง"
+                        f"❌ ไม่พบผู้ใช้ '{username}' ในระบบ\n"
+                        f"กรุณาตรวจสอบ username อีกครั้ง"
                     )
                     return
             else:
                 line_service.send_text_message(
                     user_id,
-                    "📝 กรุณาพิมพ์: เชื่อม [username]\nตัวอย่าง: เชื่อม maxnalao11"
+                    "📝 กรุณาพิมพ์: เชื่อม [username]\n"
+                    "ตัวอย่าง: เชื่อม maxnalao11"
                 )
                 return
 
         # Case 3: ขอรหัส/ช่วยเหลือ
-        triggers = ['ขอรหัส', 'รหัส', 'code', 'id', 'userid', 'help', 'ช่วย']
+        triggers = [
+            'ขอรหัส', 'รหัส', 'code', 'id', 
+            'userid', 'help', 'ช่วย'
+        ]
         
         if any(keyword in text.lower() for keyword in triggers):
             msg = (
@@ -726,7 +902,10 @@ if LINE_AVAILABLE and line_service:
         else:
             line_service.send_text_message(
                 user_id, 
-                "สวัสดีครับ! 👋\n\nวิธีเชื่อมต่อระบบ:\nพิมพ์: เชื่อม [username]\nตัวอย่าง: เชื่อม maxnalao11"
+                "สวัสดีครับ! 👋\n\n"
+                "วิธีเชื่อมต่อระบบ:\n"
+                "พิมพ์: เชื่อม [username]\n"
+                "ตัวอย่าง: เชื่อม maxnalao11"
             )
 
 
@@ -735,16 +914,25 @@ if LINE_AVAILABLE and line_service:
 def get_connection_code(request):
     """🔗 ขอรหัสเชื่อมต่อ LINE (6 หลัก)"""
     try:
-        settings_obj, created = NotificationSettings.objects.get_or_create(user=request.user)
+        settings_obj, created = (
+            NotificationSettings.objects.get_or_create(
+                user=request.user
+            )
+        )
         
         if settings_obj.line_user_id:
             return Response({"connected": True})
             
         if not settings_obj.verification_code:
-            settings_obj.verification_code = ''.join(random.choices(string.digits, k=6))
+            settings_obj.verification_code = ''.join(
+                random.choices(string.digits, k=6)
+            )
             settings_obj.save()
         
-        return Response({"connected": False, "code": settings_obj.verification_code})
+        return Response({
+            "connected": False, 
+            "code": settings_obj.verification_code
+        })
     except Exception as e:
         return Response({"error": str(e)}, status=500)
 
@@ -754,14 +942,19 @@ def get_connection_code(request):
 def get_line_user_id(request):
     """✅ เช็คสถานะการเชื่อมต่อ LINE"""
     try:
-        settings_obj = NotificationSettings.objects.get(user=request.user)
+        settings_obj = NotificationSettings.objects.get(
+            user=request.user
+        )
         has_id = bool(settings_obj.line_user_id)
         return Response({
             "has_user_id": has_id, 
             "masked_user_id": "CONNECTED" if has_id else ""
         })
     except NotificationSettings.DoesNotExist:
-        return Response({"has_user_id": False, "masked_user_id": ""})
+        return Response({
+            "has_user_id": False, 
+            "masked_user_id": ""
+        })
 
 
 @api_view(['GET'])
@@ -781,20 +974,36 @@ def get_connected_users(request):
                 'email': setting.user.email,
                 'display_name': None,
                 'picture_url': None,
-                'connected_at': setting.updated_at.isoformat() if hasattr(setting, 'updated_at') else None
+                'connected_at': (
+                    setting.updated_at.isoformat() 
+                    if hasattr(setting, 'updated_at') 
+                    else None
+                )
             }
             
             if LINE_AVAILABLE and line_service:
                 try:
-                    profile_result = line_service.get_profile(setting.line_user_id)
+                    profile_result = line_service.get_profile(
+                        setting.line_user_id
+                    )
                     if profile_result.get('success'):
-                        user_data['display_name'] = profile_result['data'].get('display_name')
-                        user_data['picture_url'] = profile_result['data'].get('picture_url')
+                        user_data['display_name'] = (
+                            profile_result['data'].get('display_name')
+                        )
+                        user_data['picture_url'] = (
+                            profile_result['data'].get('picture_url')
+                        )
                 except Exception as e:
-                    print(f"Error getting profile for {setting.user.username}: {e}")
+                    print(
+                        f"Error getting profile for "
+                        f"{setting.user.username}: {e}"
+                    )
             
             if not user_data['display_name']:
-                user_data['display_name'] = setting.user.get_full_name() or setting.user.username
+                user_data['display_name'] = (
+                    setting.user.get_full_name() or 
+                    setting.user.username
+                )
             
             users.append(user_data)
         
@@ -811,13 +1020,22 @@ def get_connected_users(request):
 def send_to_selected_users(request):
     """📤 ส่งข้อความถึงผู้ใช้ที่เลือก"""
     if not LINE_AVAILABLE or not line_service:
-        return Response({"error": "LINE service unavailable"}, status=503)
+        return Response(
+            {"error": "LINE service unavailable"}, 
+            status=503
+        )
     
     user_ids = request.data.get('user_ids', [])
-    message = request.data.get('message', '🔔 ข้อความจากระบบ EasyStock')
+    message = request.data.get(
+        'message', 
+        '🔔 ข้อความจากระบบ EasyStock'
+    )
     
     if not user_ids:
-        return Response({"error": "No users selected"}, status=400)
+        return Response(
+            {"error": "No users selected"}, 
+            status=400
+        )
     
     sent_count = 0
     failed_count = 0
@@ -828,12 +1046,16 @@ def send_to_selected_users(request):
             setting = NotificationSettings.objects.get(user_id=user_id)
             
             if setting.line_user_id:
-                result = line_service.send_text_message(setting.line_user_id, message)
+                result = line_service.send_text_message(
+                    setting.line_user_id, message
+                )
                 if result.get('success'):
                     sent_count += 1
                 else:
                     failed_count += 1
-                    errors.append(f"User {user_id}: {result.get('error')}")
+                    errors.append(
+                        f"User {user_id}: {result.get('error')}"
+                    )
             else:
                 failed_count += 1
                 errors.append(f"User {user_id}: No LINE ID")
@@ -858,12 +1080,18 @@ def send_to_selected_users(request):
 def broadcast_message(request):
     """📢 ส่งข้อความถึงทุกคนที่เชื่อมต่อ LINE"""
     if not LINE_AVAILABLE or not line_service:
-        return Response({"error": "LINE service unavailable"}, status=503)
+        return Response(
+            {"error": "LINE service unavailable"}, 
+            status=503
+        )
     
     message = request.data.get('message')
     
     if not message:
-        return Response({"error": "Message is required"}, status=400)
+        return Response(
+            {"error": "Message is required"}, 
+            status=400
+        )
     
     connected_settings = NotificationSettings.objects.filter(
         line_user_id__isnull=False
@@ -874,14 +1102,19 @@ def broadcast_message(request):
     
     for setting in connected_settings:
         try:
-            result = line_service.send_text_message(setting.line_user_id, message)
+            result = line_service.send_text_message(
+                setting.line_user_id, message
+            )
             if result.get('success'):
                 sent_count += 1
             else:
                 failed_count += 1
         except Exception as e:
             failed_count += 1
-            print(f"Broadcast error for user {setting.user.username}: {e}")
+            print(
+                f"Broadcast error for user "
+                f"{setting.user.username}: {e}"
+            )
     
     return Response({
         'success': True,
@@ -896,7 +1129,9 @@ def broadcast_message(request):
 def delete_line_user_id(request):
     """🔌 ยกเลิกการเชื่อมต่อ LINE"""
     try:
-        settings_obj = NotificationSettings.objects.get(user=request.user)
+        settings_obj = NotificationSettings.objects.get(
+            user=request.user
+        )
         settings_obj.line_user_id = None
         settings_obj.save()
     except NotificationSettings.DoesNotExist: 
@@ -909,23 +1144,42 @@ def delete_line_user_id(request):
 def send_test_message(request):
     """🧪 ส่งข้อความทดสอบ LINE"""
     if not LINE_AVAILABLE or not line_service:
-        return Response({"error": "LINE service unavailable"}, status=503)
+        return Response(
+            {"error": "LINE service unavailable"}, 
+            status=503
+        )
     
     try:
-        settings_obj = NotificationSettings.objects.get(user=request.user)
+        settings_obj = NotificationSettings.objects.get(
+            user=request.user
+        )
         
         if not settings_obj.line_user_id:
-            return Response({"error": "LINE not connected"}, status=400)
+            return Response(
+                {"error": "LINE not connected"}, 
+                status=400
+            )
         
-        result = line_service.send_test_message(settings_obj.line_user_id)
+        result = line_service.send_test_message(
+            settings_obj.line_user_id
+        )
         
         if result.get('success'):
-            return Response({"success": True, "message": "Test message sent"})
+            return Response({
+                "success": True, 
+                "message": "Test message sent"
+            })
         else:
-            return Response({"error": result.get('error')}, status=500)
+            return Response(
+                {"error": result.get('error')}, 
+                status=500
+            )
             
     except NotificationSettings.DoesNotExist:
-        return Response({"error": "Notification settings not found"}, status=404)
+        return Response(
+            {"error": "Notification settings not found"}, 
+            status=404
+        )
     except Exception as e:
         return Response({"error": str(e)}, status=500)
 
@@ -935,20 +1189,31 @@ def send_test_message(request):
 def send_low_stock_alerts(request):
     """⚠️ ส่งแจ้งเตือนสินค้าใกล้หมด"""
     if not LINE_AVAILABLE: 
-        return Response({"error": "Service unavailable"}, status=503)
+        return Response(
+            {"error": "Service unavailable"}, 
+            status=503
+        )
     
     try:
-        settings_obj = NotificationSettings.objects.get(user=request.user)
+        settings_obj = NotificationSettings.objects.get(
+            user=request.user
+        )
         
         if not settings_obj.line_user_id: 
-            return Response({"error": "No Line ID"}, status=400)
+            return Response(
+                {"error": "No Line ID"}, 
+                status=400
+            )
         
-        low_stock = Product.objects.filter(is_deleted=False, stock__lt=5, stock__gt=0)
+        low_stock = Product.objects.filter(
+            is_deleted=False, stock__lt=5, stock__gt=0
+        )
         cnt = 0
         
         for p in low_stock:
             res = line_service.send_low_stock_alert(
-                settings_obj.line_user_id, p.name, p.code, p.stock, p.unit
+                settings_obj.line_user_id, 
+                p.name, p.code, p.stock, p.unit
             )
             if res.get('success'): 
                 cnt += 1
@@ -963,21 +1228,28 @@ def send_low_stock_alerts(request):
 def get_line_profile(request):
     """👤 ดึง LINE Profile"""
     try:
-        settings_obj = NotificationSettings.objects.get(user=request.user)
+        settings_obj = NotificationSettings.objects.get(
+            user=request.user
+        )
         
         if not settings_obj.line_user_id: 
-            return Response({"error": "No ID"}, status=400)
+            return Response(
+                {"error": "No ID"}, 
+                status=400
+            )
         
         res = line_service.get_profile(settings_obj.line_user_id)
         
-        return Response(res['data'] if res.get('success') else res)
+        return Response(
+            res['data'] if res.get('success') else res
+        )
     except Exception as e:
         return Response({"error": str(e)}, status=500)
 
 
 # ==================== FESTIVAL VIEWSET ====================
 
-class FestivalViewSet(ModelViewSet):
+class FestivalViewSet(viewsets.ModelViewSet):
     """
     🎉 จัดการเทศกาล
     - สร้าง/แก้ไข/ลบเทศกาล
@@ -987,7 +1259,7 @@ class FestivalViewSet(ModelViewSet):
     """
     queryset = Festival.objects.all()
     serializer_class = FestivalSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]  # ✅ แก้จาก AllowAny
 
     def get_serializer_class(self):
         if self.action == 'with_best_sellers':
@@ -1026,9 +1298,15 @@ class FestivalViewSet(ModelViewSet):
 
         first_day = datetime(year, month, 1).date()
         if month == 12:
-            last_day = datetime(year + 1, 1, 1).date() - timedelta(days=1)
+            last_day = (
+                datetime(year + 1, 1, 1).date() - 
+                timedelta(days=1)
+            )
         else:
-            last_day = datetime(year, month + 1, 1).date() - timedelta(days=1)
+            last_day = (
+                datetime(year, month + 1, 1).date() - 
+                timedelta(days=1)
+            )
 
         festivals = Festival.objects.filter(
             start_date__lte=last_day,
@@ -1047,7 +1325,9 @@ class FestivalViewSet(ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def with_best_sellers(self, request):
-        festivals = Festival.objects.prefetch_related('best_sellers').all()
+        festivals = Festival.objects.prefetch_related(
+            'best_sellers'
+        ).all()
         serializer = self.get_serializer(festivals, many=True)
         return Response({
             'count': festivals.count(),
@@ -1057,7 +1337,9 @@ class FestivalViewSet(ModelViewSet):
     @action(detail=True, methods=['get'])
     def best_sellers(self, request, pk=None):
         festival = self.get_object()
-        best_sellers = BestSeller.objects.filter(festival=festival).order_by('rank')
+        best_sellers = BestSeller.objects.filter(
+            festival=festival
+        ).order_by('rank')
 
         serializer = BestSellerDetailSerializer(best_sellers, many=True)
         return Response({
@@ -1069,7 +1351,7 @@ class FestivalViewSet(ModelViewSet):
 
 # ==================== BEST SELLER VIEWSET ====================
 
-class BestSellerViewSet(ModelViewSet):
+class BestSellerViewSet(viewsets.ModelViewSet):
     """
     🏆 วิเคราะห์สินค้าขายดี
     - ดู Top N สินค้าขายดี (แยกตามช่วงเวลา)
@@ -1079,7 +1361,7 @@ class BestSellerViewSet(ModelViewSet):
     """
     queryset = BestSeller.objects.all()
     serializer_class = BestSellerSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]  # ✅ แก้จาก AllowAny
 
     @action(detail=False, methods=['get'])
     def top_products(self, request):
@@ -1105,8 +1387,12 @@ class BestSellerViewSet(ModelViewSet):
         if period == 'custom' and start_date_str and end_date_str:
             try:
                 from datetime import datetime as dt
-                start_date = dt.strptime(start_date_str, '%Y-%m-%d').date()
-                end_date = dt.strptime(end_date_str, '%Y-%m-%d').date()
+                start_date = dt.strptime(
+                    start_date_str, '%Y-%m-%d'
+                ).date()
+                end_date = dt.strptime(
+                    end_date_str, '%Y-%m-%d'
+                ).date()
                 
                 end_datetime = timezone.make_aware(
                     dt.combine(end_date, dt.max.time())
@@ -1140,7 +1426,9 @@ class BestSellerViewSet(ModelViewSet):
         top_products = issue_data.values('product').annotate(
             total_issued=Sum('qty'),
             transactions=Count('id')
-        ).filter(total_issued__gte=min_qty).order_by('-total_issued')[:limit]
+        ).filter(
+            total_issued__gte=min_qty
+        ).order_by('-total_issued')[:limit]
 
         results = []
         for idx, tp in enumerate(top_products, 1):
@@ -1152,7 +1440,11 @@ class BestSellerViewSet(ModelViewSet):
                         'id': product.id,
                         'name': product.name,
                         'code': product.code,
-                        'category': product.category.name if product.category else None
+                        'category': (
+                            product.category.name 
+                            if product.category 
+                            else None
+                        )
                     },
                     'total_issued': tp['total_issued'],
                     'transactions': tp['transactions'],
@@ -1190,7 +1482,9 @@ class BestSellerViewSet(ModelViewSet):
         recommendations = []
         for bs in best_sellers:
             suggested_qty = int(bs.last_year_count * 1.1)
-            confidence = min(90, 50 + abs(bs.percentage_increase))
+            confidence = min(
+                90, 50 + abs(bs.percentage_increase)
+            )
 
             recommendations.append({
                 'product': {
@@ -1200,14 +1494,18 @@ class BestSellerViewSet(ModelViewSet):
                     'unit': bs.product.unit
                 },
                 'last_year_count': bs.last_year_count,
-                'suggested_increase': suggested_qty - bs.last_year_count,
+                'suggested_increase': (
+                    suggested_qty - bs.last_year_count
+                ),
                 'suggested_quantity': suggested_qty,
                 'percentage_increase': bs.percentage_increase,
                 'confidence': confidence,
                 'rank': bs.rank
             })
 
-        days_left = (upcoming_festival.start_date - today).days
+        days_left = (
+            upcoming_festival.start_date - today
+        ).days
 
         return Response({
             'upcoming_festival': {
@@ -1221,7 +1519,12 @@ class BestSellerViewSet(ModelViewSet):
             },
             'recommendations': recommendations,
             'count': len(recommendations),
-            'average_confidence': sum([r['confidence'] for r in recommendations]) / len(recommendations) if recommendations else 0
+            'average_confidence': (
+                sum([r['confidence'] for r in recommendations]) / 
+                len(recommendations) 
+                if recommendations 
+                else 0
+            )
         })
 
     @action(detail=False, methods=['get'])
@@ -1248,7 +1551,11 @@ class BestSellerViewSet(ModelViewSet):
 
         analysis = {}
         for bs in best_sellers:
-            category_name = bs.product.category.name if bs.product.category else 'Uncategorized'
+            category_name = (
+                bs.product.category.name 
+                if bs.product.category 
+                else 'Uncategorized'
+            )
             if category_name not in analysis:
                 analysis[category_name] = {
                     'category': category_name,
@@ -1283,16 +1590,26 @@ class BestSellerViewSet(ModelViewSet):
 
             for data in best_sellers_data:
                 try:
-                    product = Product.objects.get(id=data['product_id'])
-                    bs, created = BestSeller.objects.update_or_create(
-                        product=product,
-                        festival=festival,
-                        defaults={
-                            'total_issued': data.get('total_issued', 0),
-                            'rank': data.get('rank', 0),
-                            'last_year_count': data.get('last_year_count', 0),
-                            'this_year_count': data.get('total_issued', 0)
-                        }
+                    product = Product.objects.get(
+                        id=data['product_id']
+                    )
+                    bs, created = (
+                        BestSeller.objects.update_or_create(
+                            product=product,
+                            festival=festival,
+                            defaults={
+                                'total_issued': data.get(
+                                    'total_issued', 0
+                                ),
+                                'rank': data.get('rank', 0),
+                                'last_year_count': data.get(
+                                    'last_year_count', 0
+                                ),
+                                'this_year_count': data.get(
+                                    'total_issued', 0
+                                )
+                            }
+                        )
                     )
                     if created:
                         created_count += 1
@@ -1319,7 +1636,7 @@ class BestSellerViewSet(ModelViewSet):
 
 # ==================== DASHBOARD VIEWSETS ====================
 
-class EmployeeDashboardViewSet(ModelViewSet):
+class EmployeeDashboardViewSet(viewsets.ModelViewSet):
     """
     📊 แดชบอร์ดสำหรับพนักงาน
     - จำนวนสินค้า, สต็อกต่ำ
@@ -1342,25 +1659,38 @@ class EmployeeDashboardViewSet(ModelViewSet):
         start = datetime.combine(today, time.min, tzinfo=bangkok_tz)
         end = datetime.combine(today, time.max, tzinfo=bangkok_tz)
         
-        total_products = Product.objects.filter(is_deleted=False).count()
+        total_products = Product.objects.filter(
+            is_deleted=False
+        ).count()
         
         low_stock = Product.objects.filter(
             is_deleted=False, stock__gt=0, stock__lt=5
-        ).values('id', 'code', 'name', 'stock', 'unit').order_by('stock')[:10]
+        ).values(
+            'id', 'code', 'name', 'stock', 'unit'
+        ).order_by('stock')[:10]
         
         today_issued = IssueLine.objects.filter(
             issue__created_at__gte=start,
             issue__created_at__lte=end
-        ).aggregate(total_qty=Sum('qty'), total_items=Count('id'))
+        ).aggregate(
+            total_qty=Sum('qty'), 
+            total_items=Count('id')
+        )
         
         upcoming_festivals = Festival.objects.filter(
             start_date__gte=today
-        ).order_by('start_date')[:5].values('id', 'name', 'icon', 'start_date')
+        ).order_by('start_date')[:5].values(
+            'id', 'name', 'icon', 'start_date'
+        )
         
         top_products = IssueLine.objects.filter(
             issue__created_at__gte=start,
             issue__created_at__lte=end
-        ).values('product__id', 'product__code', 'product__name').annotate(
+        ).values(
+            'product__id', 
+            'product__code', 
+            'product__name'
+        ).annotate(
             qty=Sum('qty')
         ).order_by('-qty')[:5]
         
@@ -1377,7 +1707,7 @@ class EmployeeDashboardViewSet(ModelViewSet):
         })
 
 
-class AdminDashboardViewSet(ModelViewSet):
+class AdminDashboardViewSet(viewsets.ModelViewSet):
     """
     💼 แดชบอร์ดสำหรับ Admin
     - ข้อมูลการเงิน (มูลค่าสต็อก, กำไร)
@@ -1405,7 +1735,11 @@ class AdminDashboardViewSet(ModelViewSet):
             total_selling_value += selling_value
             total_profit += profit
         
-        profit_margin = (total_profit / total_selling_value * 100) if total_selling_value > 0 else 0
+        profit_margin = (
+            (total_profit / total_selling_value * 100) 
+            if total_selling_value > 0 
+            else 0
+        )
         
         return Response({
             'total_inventory_value': total_inventory_value,
@@ -1413,7 +1747,9 @@ class AdminDashboardViewSet(ModelViewSet):
             'total_profit': total_profit,
             'profit_margin': profit_margin,
             'total_products': products.count(),
-            'total_stock_items': products.aggregate(Sum('stock'))['stock__sum'] or 0
+            'total_stock_items': (
+                products.aggregate(Sum('stock'))['stock__sum'] or 0
+            )
         })
 
     @action(detail=False, methods=['get'])
@@ -1434,7 +1770,8 @@ class AdminDashboardViewSet(ModelViewSet):
         ).annotate(
             inventory_value=F('stock') * F('cost_price')
         ).values(
-            'id', 'code', 'name', 'stock', 'cost_price', 'selling_price', 'category__name'
+            'id', 'code', 'name', 'stock', 
+            'cost_price', 'selling_price', 'category__name'
         ).order_by('-inventory_value')[:20]
         
         return Response({
@@ -1494,14 +1831,16 @@ class CustomEventViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         """ฟังก์ชัน: เช็คสิทธิ์ก่อนแก้ไข"""
         instance = self.get_object()
-        if instance.created_by != self.request.user and not self.request.user.is_staff:
+        if (instance.created_by != self.request.user and 
+            not self.request.user.is_staff):
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("คุณไม่มีสิทธิ์แก้ไขรายการนี้")
         serializer.save()
     
     def perform_destroy(self, instance):
         """ฟังก์ชัน: เช็คสิทธิ์ก่อนลบ"""
-        if instance.created_by != self.request.user and not self.request.user.is_staff:
+        if (instance.created_by != self.request.user and 
+            not self.request.user.is_staff):
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("คุณไม่มีสิทธิ์ลบรายการนี้")
         instance.delete()
@@ -1509,7 +1848,9 @@ class CustomEventViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def my_events(self, request):
         """ฟังก์ชันดูบันทึกของตัวเอง"""
-        queryset = CustomEvent.objects.filter(created_by=request.user)
+        queryset = CustomEvent.objects.filter(
+            created_by=request.user
+        )
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
     
@@ -1538,11 +1879,12 @@ class CustomEventViewSet(viewsets.ModelViewSet):
     def upcoming(self, request):
         """ฟังก์ชันดูบันทึกที่กำลังมาถึง (10 รายการแรก)"""
         today = timezone.now().date()
-        queryset = self.get_queryset().filter(date__gte=today).order_by('date')[:10]
+        queryset = self.get_queryset().filter(
+            date__gte=today
+        ).order_by('date')[:10]
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
     
-    # ✅ ✅ ✅ เพิ่ม Action ใหม่นี้ ✅ ✅ ✅
     @action(detail=False, methods=['get'])
     def upcoming_shared(self, request):
         """

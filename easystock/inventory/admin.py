@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import (
     Product, Category, Festival, BestSeller, 
-    FestivalForecast, ForecastProduct, Task
+     Task
 )
 
 # ================ Product Admin ================
@@ -72,22 +72,6 @@ class BestSellerAdmin(admin.ModelAdmin):
         }),
     )
 
-
-# ================ FestivalForecast Admin ================
-@admin.register(FestivalForecast)
-class FestivalForecastAdmin(admin.ModelAdmin):
-    list_display = ['festival', 'created_at']
-    list_filter = ['festival', 'created_at']
-    search_fields = ['festival__name']
-    readonly_fields = ['created_at', 'updated_at']
-
-
-# ================ ForecastProduct Admin ================
-@admin.register(ForecastProduct)
-class ForecastProductAdmin(admin.ModelAdmin):
-    list_display = ['forecast', 'product', 'recommended_quantity', 'confidence']
-    list_filter = ['confidence', 'forecast']
-    search_fields = ['product__name', 'forecast__festival__name']
 
 
 # ================ Task Admin (NEW) ================

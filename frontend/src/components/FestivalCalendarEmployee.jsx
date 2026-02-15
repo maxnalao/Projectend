@@ -1,7 +1,9 @@
 // src/components/FestivalCalendarEmployee.jsx
 // ✅ สำหรับพนักงาน - แสดงเฉพาะ "งาน" (Admin Events)
+// ✅ ใช้ CustomEventDetailModal แทน modal เดิม
 import React, { useEffect, useState, useMemo } from 'react';
 import api from '../api';
+import CustomEventDetailModal from './CustomEventDetailModal';
 
 const GOOGLE_API_KEY = "AIzaSyAtdfhSI2DJHNjiYfX_wD6MRHkiL2EIZb4";
 
@@ -46,13 +48,11 @@ const FestivalCalendarEmployee = ({ adminEvents = [] }) => {
 
   const getEventTypeLabel = (eventType) => {
     const labels = {
-      'personal': 'ส่วนตัว',
-      'work': 'งาน',
-      'meeting': 'ประชุม/ทีมงาน',
-      'reminder': 'เตือนความจำ',
-      'shopping': 'รับ/ส่งสินค้า',
-      'delivery': 'ส่งต้อสินค้า',
-      'announcement': 'ประกาศสำคัญ'
+      'stock_check': 'ตรวจนับสต็อก',
+      'stock_order': 'สั่งซื้อสินค้า',
+      'delivery': 'รับ/ส่งสินค้า',
+      'meeting': 'ประชุม/นัดหมาย',
+      'other': 'อื่นๆ'
     };
     return labels[eventType] || 'อื่นๆ';
   };
@@ -326,50 +326,14 @@ const FestivalCalendarEmployee = ({ adminEvents = [] }) => {
         </div>
       </div>
 
-      {showDetail && selectedEvent && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowDetail(false)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className={`p-4 ${selectedEvent.isAdminEvent ? 'bg-blue-500' : selectedEvent.isSelling || selectedEvent.type === "selling_festival" ? 'bg-pink-500' : selectedEvent.type === "buddhist" ? 'bg-orange-500' : selectedEvent.type === "royal" ? 'bg-yellow-500' : selectedEvent.isHoliday ? 'bg-red-500' : selectedEvent.isFestival ? 'bg-green-500' : 'bg-blue-500'}`}>
-              <div className="flex items-center justify-between">
-                <h2 className="text-white font-bold">{selectedEvent.title || selectedEvent.name}</h2>
-                <button onClick={() => setShowDetail(false)} className="text-white/80 hover:text-white">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-            <div className="p-4">
-              {(selectedEvent.description || selectedEvent.notes) && <p className="text-gray-600 text-sm mb-3">{selectedEvent.description || selectedEvent.notes}</p>}
-              <div className="space-y-2 text-sm">
-                <div className="flex items-center gap-2">
-                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  <span className="text-gray-500">วันที่:</span>
-                  <span className="text-gray-700 font-medium">{new Date(selectedEvent.date || selectedEvent.start_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                  </svg>
-                  <span className="text-gray-500">ประเภท:</span>
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                    selectedEvent.isAdminEvent ? 'bg-blue-100 text-blue-700' :
-                    selectedEvent.isSelling || selectedEvent.type === "selling_festival" ? 'bg-pink-100 text-pink-700' :
-                    selectedEvent.type === "buddhist" ? 'bg-orange-100 text-orange-700' : selectedEvent.type === "royal" ? 'bg-yellow-100 text-yellow-700' :
-                    selectedEvent.isHoliday ? 'bg-red-100 text-red-700' : selectedEvent.isFestival ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
-                  }`}>
-                    {selectedEvent.isAdminEvent ? getEventTypeLabel(selectedEvent.event_type) :
-                     selectedEvent.isSelling || selectedEvent.type === "selling_festival" ? 'เทศกาลขายดี' :
-                     selectedEvent.type === "buddhist" ? 'วันพุทธ' : selectedEvent.type === "royal" ? 'วันพระราชา' :
-                     selectedEvent.isHoliday ? 'วันหยุด' : selectedEvent.isFestival ? 'เทศกาล' : 'บันทึก'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* ✅ ใช้ CustomEventDetailModal สำหรับ Admin Events (Employee เห็นอย่างเดียว) */}
+      {showDetail && selectedEvent && selectedEvent.isAdminEvent && (
+        <CustomEventDetailModal
+          event={selectedEvent}
+          onClose={() => setShowDetail(false)}
+          onEdit={null}  // Employee ไม่สามารถแก้ไขได้
+          onDelete={null}  // Employee ไม่สามารถลบได้
+        />
       )}
     </div>
   );

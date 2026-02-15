@@ -1,9 +1,11 @@
-# inventory/serializers.py (COMPLETE - FIXED VERSION)
+# inventory/serializers.py (CLEANED VERSION - ลบโค้ดที่ไม่ใช้แล้ว)
 
 from rest_framework import serializers
-from .models import CustomEvent
 from django.contrib.auth import get_user_model
-from .models import Product, Category, Listing, Festival, BestSeller, FestivalForecast, ForecastProduct, Task
+from .models import (
+    Product, Category, Listing, Festival, BestSeller, 
+    Task, CustomEvent
+)
 
 User = get_user_model()
 
@@ -12,7 +14,10 @@ User = get_user_model()
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'username', 'first_name', 'last_name', 'email', 'is_staff', 'is_superuser']
+        fields = [
+            'id', 'username', 'first_name', 'last_name', 
+            'email', 'is_staff', 'is_superuser'
+        ]
         read_only_fields = ['id', 'is_staff', 'is_superuser']
 
 
@@ -30,14 +35,14 @@ class CategorySerializer(serializers.ModelSerializer):
 
 # ================ Product Serializer ================
 class ProductSerializer(serializers.ModelSerializer):
-    category_name = serializers.CharField(source='category.name', read_only=True)
+    category_name = serializers.CharField(
+        source='category.name', 
+        read_only=True
+    )
     image_url = serializers.SerializerMethodField()
-    
-    # ✅ เพิ่ม display_name
     display_name = serializers.SerializerMethodField()
     listing_title = serializers.SerializerMethodField()
     has_listing = serializers.SerializerMethodField()
-    
     profit = serializers.SerializerMethodField()
     profit_margin = serializers.SerializerMethodField()
     inventory_value = serializers.SerializerMethodField()
@@ -106,9 +111,18 @@ class ProductSerializer(serializers.ModelSerializer):
 
 # ================ Listing Serializer ================
 class ListingSerializer(serializers.ModelSerializer):
-    product_name = serializers.CharField(source='product.name', read_only=True)
-    product_code = serializers.CharField(source='product.code', read_only=True)
-    category_name = serializers.CharField(source='product.category.name', read_only=True)
+    product_name = serializers.CharField(
+        source='product.name', 
+        read_only=True
+    )
+    product_code = serializers.CharField(
+        source='product.code', 
+        read_only=True
+    )
+    category_name = serializers.CharField(
+        source='product.category.name', 
+        read_only=True
+    )
     image_url = serializers.SerializerMethodField()
     cost_price = serializers.SerializerMethodField()
     selling_price = serializers.SerializerMethodField()
@@ -137,6 +151,8 @@ class ListingSerializer(serializers.ModelSerializer):
     
     def get_image_url(self, obj):
         request = self.context.get('request')
+        
+        # ลองดึงรูปจาก Listing ก่อน
         if obj.image and hasattr(obj.image, 'url'):
             try:
                 if request:
@@ -144,6 +160,8 @@ class ListingSerializer(serializers.ModelSerializer):
                 return obj.image.url
             except:
                 pass
+        
+        # ถ้าไม่มี ดึงจาก Product
         if obj.product and obj.product.image and hasattr(obj.product.image, 'url'):
             try:
                 if request:
@@ -151,6 +169,7 @@ class ListingSerializer(serializers.ModelSerializer):
                 return obj.product.image.url
             except:
                 pass
+        
         return None
 
 
@@ -166,7 +185,8 @@ class FestivalSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'description', 'start_date', 'end_date',
             'is_recurring', 'category', 'icon', 'color',
-            'duration_days', 'is_upcoming', 'days_until', 'best_sellers_count',
+            'duration_days', 'is_upcoming', 'days_until', 
+            'best_sellers_count',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at']
@@ -186,9 +206,18 @@ class FestivalSerializer(serializers.ModelSerializer):
 
 # ================ BestSeller Serializer ================
 class BestSellerSerializer(serializers.ModelSerializer):
-    product_name = serializers.CharField(source='product.name', read_only=True)
-    product_code = serializers.CharField(source='product.code', read_only=True)
-    festival_name = serializers.CharField(source='festival.name', read_only=True)
+    product_name = serializers.CharField(
+        source='product.name', 
+        read_only=True
+    )
+    product_code = serializers.CharField(
+        source='product.code', 
+        read_only=True
+    )
+    festival_name = serializers.CharField(
+        source='festival.name', 
+        read_only=True
+    )
     status_display = serializers.SerializerMethodField()
 
     class Meta:
@@ -220,33 +249,13 @@ class BestSellerDetailSerializer(serializers.ModelSerializer):
             'id': obj.product.id,
             'name': obj.product.name,
             'code': obj.product.code,
-            'category': obj.product.category.name if obj.product.category else None,
+            'category': (
+                obj.product.category.name 
+                if obj.product.category 
+                else None
+            ),
             'unit': obj.product.unit
         }
-
-
-# ================ ForecastProduct Serializer ================
-class ForecastProductSerializer(serializers.ModelSerializer):
-    product_name = serializers.CharField(source='product.name', read_only=True)
-    product_code = serializers.CharField(source='product.code', read_only=True)
-
-    class Meta:
-        model = ForecastProduct
-        fields = [
-            'id', 'product', 'product_name', 'product_code',
-            'recommended_quantity', 'confidence', 'notes'
-        ]
-
-
-# ================ FestivalForecast Serializer ================
-class FestivalForecastSerializer(serializers.ModelSerializer):
-    festival = FestivalSerializer(read_only=True)
-    product_forecasts = ForecastProductSerializer(many=True, read_only=True)
-
-    class Meta:
-        model = FestivalForecast
-        fields = ['id', 'festival', 'product_forecasts', 'notes', 'created_at', 'updated_at']
-        read_only_fields = ['created_at', 'updated_at']
 
 
 # ================ FestivalWithBestSellers Serializer ================
@@ -278,11 +287,27 @@ class FestivalWithBestSellersSerializer(serializers.ModelSerializer):
 
 # ================ Task Serializer ================
 class TaskSerializer(serializers.ModelSerializer):
-    assigned_to_name = serializers.CharField(source='assigned_to.get_full_name', read_only=True)
-    status_display = serializers.CharField(source='get_status_display', read_only=True)
-    priority_display = serializers.CharField(source='get_priority_display', read_only=True)
-    task_type_display = serializers.CharField(source='get_task_type_display', read_only=True)
-    festival_name = serializers.CharField(source='festival.name', read_only=True, allow_null=True)
+    assigned_to_name = serializers.CharField(
+        source='assigned_to.get_full_name', 
+        read_only=True
+    )
+    status_display = serializers.CharField(
+        source='get_status_display', 
+        read_only=True
+    )
+    priority_display = serializers.CharField(
+        source='get_priority_display', 
+        read_only=True
+    )
+    task_type_display = serializers.CharField(
+        source='get_task_type_display', 
+        read_only=True
+    )
+    festival_name = serializers.CharField(
+        source='festival.name', 
+        read_only=True, 
+        allow_null=True
+    )
     is_overdue = serializers.BooleanField(read_only=True)
     days_until_due = serializers.SerializerMethodField()
     
@@ -302,10 +327,13 @@ class TaskSerializer(serializers.ModelSerializer):
         return obj.days_until_due
 
 
-# ================ CustomEvent Serializer (FIXED) ================
+# ================ CustomEvent Serializer ================
 class CustomEventSerializer(serializers.ModelSerializer):
     created_by_name = serializers.SerializerMethodField()
-    priority_display = serializers.CharField(source='get_priority_display', read_only=True)
+    priority_display = serializers.CharField(
+        source='get_priority_display', 
+        read_only=True
+    )
     
     class Meta:
         model = CustomEvent
@@ -323,9 +351,15 @@ class CustomEventSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at'
         ]
-        read_only_fields = ['id', 'created_by', 'created_by_name', 'created_at', 'updated_at']
+        read_only_fields = [
+            'id', 'created_by', 'created_by_name', 
+            'created_at', 'updated_at'
+        ]
     
     def get_created_by_name(self, obj):
         if obj.created_by:
-            return obj.created_by.get_full_name() or obj.created_by.username
+            return (
+                obj.created_by.get_full_name() or 
+                obj.created_by.username
+            )
         return None

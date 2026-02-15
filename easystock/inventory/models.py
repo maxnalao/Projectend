@@ -1,4 +1,4 @@
-# backend/inventory/models.py (FIXED - Copy Everything)
+# backend/inventory/models.py (CLEANED VERSION - ลบโค้ดที่ไม่ใช้แล้ว)
 from django.db import models
 from django.conf import settings
 from django.db.models import Q
@@ -8,27 +8,52 @@ from django.utils import timezone
 # ================ CLASS 1: Category ================
 class Category(models.Model):
     name = models.CharField(max_length=100, unique=True)
+    
     def __str__(self): 
         return self.name
+
 
 # ================ CLASS 2: Product ================
 class Product(models.Model):
     code = models.CharField(max_length=50, db_index=True)
     name = models.CharField(max_length=200)
-    price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="OLD - Deprecated, use cost_price/selling_price")
-    # ✅ PHASE 3B.2: NEW PRICE FIELDS
-    cost_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="ราคาต้นทุน/ราคาซื้อ")
-    selling_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="ราคาขาย/ราคาขายปลีก")
+    
+    # ✅ PRICE FIELDS
+    cost_price = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        default=0, 
+        help_text="ราคาต้นทุน/ราคาซื้อ"
+    )
+    selling_price = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        default=0, 
+        help_text="ราคาขาย/ราคาขายปลีก"
+    )
+    
     unit = models.CharField(max_length=50, default="ชิ้น")
     stock = models.IntegerField(default=0)
-    # ✅ เพิ่ม initial_stock field นี้
-    initial_stock = models.IntegerField(default=0, help_text="Stock when first received in")
+    initial_stock = models.IntegerField(
+        default=0, 
+        help_text="Stock when first received in"
+    )
     image = models.ImageField(upload_to="products/", blank=True, null=True)
-    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True)
+    category = models.ForeignKey(
+        Category, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True
+    )
     on_sale = models.BooleanField(default=False)
     is_deleted = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True
+    )
 
     def __str__(self): 
         return self.name
@@ -42,64 +67,58 @@ class Product(models.Model):
             ),
         ]
 
+
 # ================ CLASS 3: Issue ================
 class Issue(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True
+    )
+
 
 # ================ CLASS 4: IssueLine ================
 class IssueLine(models.Model):
-    issue   = models.ForeignKey(Issue, related_name="lines", on_delete=models.CASCADE)
+    issue = models.ForeignKey(
+        Issue, 
+        related_name="lines", 
+        on_delete=models.CASCADE
+    )
     product = models.ForeignKey(Product, on_delete=models.PROTECT)
-    qty     = models.PositiveIntegerField()
+    qty = models.PositiveIntegerField()
+
 
 # ================ CLASS 5: Listing ================
 class Listing(models.Model):
-    product    = models.OneToOneField(Product, related_name="listing", on_delete=models.CASCADE)
-    title      = models.CharField(max_length=200, blank=True)
-    sale_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    unit       = models.CharField(max_length=50, blank=True)
-    image      = models.ImageField(upload_to="listings/", blank=True, null=True)
-    is_active  = models.BooleanField(default=True)
-    quantity   = models.IntegerField(default=0)
+    product = models.OneToOneField(
+        Product, 
+        related_name="listing", 
+        on_delete=models.CASCADE
+    )
+    title = models.CharField(max_length=200, blank=True)
+    sale_price = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        null=True, 
+        blank=True
+    )
+    unit = models.CharField(max_length=50, blank=True)
+    image = models.ImageField(upload_to="listings/", blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    quantity = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.title or self.product.name
 
-# ================ CLASS 6: NotificationSettings ================
-class NotificationSettings(models.Model):
-    user = models.OneToOneField(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name='notificationsettings'
-    )
-    line_user_id = models.CharField(
-        max_length=255,
-        null=True,
-        blank=True
-    )
-    verification_code = models.CharField(
-        max_length=6,
-        null=True,
-        blank=True
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        verbose_name = "Notification Settings"
-        verbose_name_plural = "Notification Settings"
-    
-    def __str__(self):
-        return f"{self.user.username} - LINE"
 
-
-# ================ CLASS 7: Festival (NEW - Phase 3A) ================
+# ================ CLASS 6: Festival ================
 class Festival(models.Model):
     """
     เก็บข้อมูลเทศกาล/วันพิเศษ
-    เช่น ปีใหม่, สงกราน, ลอยกระทง, วันลอยกระทง, วันเด็ก, วันสตรี, เป็นต้น
+    เช่น ปีใหม่, สงกราน, ลอยกระทง, วันเด็ก, วันสตรี
     """
     name = models.CharField(
         max_length=100,
@@ -110,12 +129,8 @@ class Festival(models.Model):
         blank=True,
         help_text="รายละเอียดเทศกาล"
     )
-    start_date = models.DateField(
-        help_text="วันเริ่มเทศกาล"
-    )
-    end_date = models.DateField(
-        help_text="วันสิ้นสุดเทศกาล"
-    )
+    start_date = models.DateField(help_text="วันเริ่มเทศกาล")
+    end_date = models.DateField(help_text="วันสิ้นสุดเทศกาล")
     is_recurring = models.BooleanField(
         default=True,
         help_text="ประจำปี (True) หรือ ไม่ประจำปี (False)"
@@ -141,8 +156,6 @@ class Festival(models.Model):
         default='#FF6B6B',
         help_text="สีสำหรับแสดงบน Calendar (#RRGGBB)"
     )
-    
-    # ✅ NEW FIELDS - หมายเหตุ & เตรียมของสต๊อก
     notes = models.TextField(
         null=True,
         blank=True,
@@ -153,7 +166,6 @@ class Festival(models.Model):
         blank=True,
         help_text="รายการสิ่งที่ต้องเตรียม (แยกด้วย ,)"
     )
-    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -185,7 +197,7 @@ class Festival(models.Model):
         return None
 
 
-# ================ CLASS 8: BestSeller (NEW - Phase 3A) ================
+# ================ CLASS 7: BestSeller ================
 class BestSeller(models.Model):
     """
     บันทึกสินค้าขายดี/ยอดนิยมตามเทศกาล
@@ -252,7 +264,8 @@ class BestSeller(models.Model):
         """คำนวณ percentage_increase ก่อน save"""
         if self.last_year_count > 0:
             self.percentage_increase = (
-                (self.this_year_count - self.last_year_count) / self.last_year_count * 100
+                (self.this_year_count - self.last_year_count) / 
+                self.last_year_count * 100
             )
         super().save(*args, **kwargs)
 
@@ -277,84 +290,12 @@ class BestSeller(models.Model):
             return "= 0%"
 
 
-# ================ CLASS 9: FestivalForecast (NEW - Phase 3A) ================
-class FestivalForecast(models.Model):
-    """
-    ตัวช่วยในการคาดการณ์สินค้าที่ควรเตรียม
-    สำหรับเทศกาลที่มาถึง
-    """
-    festival = models.OneToOneField(
-        Festival,
-        on_delete=models.CASCADE,
-        related_name='forecast',
-        help_text="เทศกาล"
-    )
-    recommended_products = models.ManyToManyField(
-        Product,
-        through='ForecastProduct',
-        help_text="สินค้าที่ควรเตรียม"
-    )
-    notes = models.TextField(
-        null=True,
-        blank=True,
-        help_text="หมายเหตุการคาดการณ์"
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        verbose_name = 'Festival Forecast'
-        verbose_name_plural = 'Festival Forecasts'
-
-    def __str__(self):
-        return f"Forecast for {self.festival.name}"
-
-
-# ================ CLASS 10: ForecastProduct (NEW - Phase 3A) ================
-class ForecastProduct(models.Model):
-    """
-    ผ่านแบบ many-to-many สำหรับ Festival Forecast
-    """
-    forecast = models.ForeignKey(
-        FestivalForecast,
-        on_delete=models.CASCADE,
-        related_name='product_forecasts'
-    )
-    product = models.ForeignKey(
-        Product,
-        on_delete=models.CASCADE
-    )
-    recommended_quantity = models.IntegerField(
-        default=0,
-        help_text="จำนวนที่แนะนำให้เตรียม"
-    )
-    confidence = models.IntegerField(
-        default=80,
-        help_text="ความเชื่อมั่นของการแนะนำ (0-100%)"
-    )
-    notes = models.TextField(
-        null=True,
-        blank=True,
-        help_text="หมายเหตุ"
-    )
-
-    class Meta:
-        unique_together = ('forecast', 'product')
-        ordering = ['-confidence', '-recommended_quantity']
-
-    def __str__(self):
-        return f"{self.product.name} - {self.recommended_quantity} units"
-
-    
-# ================ CLASS 11: Task (NEW - Phase 4) ================
-# inventory/models.py - CLASS 11: Task (แก้ TASK_TYPE_CHOICES)
-
+# ================ CLASS 8: Task ================
 class Task(models.Model):
     """
     ✅ Model สำหรับการมอบหมายงานให้พนักงาน
     """
     
-    # ✅ UPDATED TASK_TYPE_CHOICES - ลบออก: product_listing, visual_merchandising, purchase_followup
     TASK_TYPE_CHOICES = [
         ('stock_replenishment', '🎁 เติมสินค้า'),
         ('stock_issue', '📤 เบิกสต๊อก'),
@@ -480,7 +421,14 @@ class Task(models.Model):
         ]
     
     def __str__(self):
-        return f"[{self.get_priority_display()}] {self.title} → {self.assigned_to.get_full_name() or self.assigned_to.username}"
+        assigned_name = (
+            self.assigned_to.get_full_name() or 
+            self.assigned_to.username
+        )
+        return (
+            f"[{self.get_priority_display()}] "
+            f"{self.title} → {assigned_name}"
+        )
     
     @property
     def is_overdue(self):
@@ -502,7 +450,8 @@ class Task(models.Model):
         self.status = 'completed'
         self.completed_at = timezone.now()
         if notes:
-            self.notes = (self.notes or '') + f"\n[{timezone.now()}] {notes}"
+            current_notes = self.notes or ''
+            self.notes = f"{current_notes}\n[{timezone.now()}] {notes}"
         self.save()
     
     def save(self, *args, **kwargs):
@@ -513,10 +462,8 @@ class Task(models.Model):
             self.completed_at = None
         super().save(*args, **kwargs)
 
-# เพิ่มใน models.py (ไฟล์ที่มี Festival model อยู่แล้ว)
 
-# เพิ่มใน models.py - แก้ไข CustomEvent ให้ใช้ settings.AUTH_USER_MODEL
-
+# ================ CLASS 9: CustomEvent ================
 class CustomEvent(models.Model):
     """บันทึกของฉัน - เก็บในฐานข้อมูลแทน localStorage"""
     
@@ -540,7 +487,7 @@ class CustomEvent(models.Model):
     event_type = models.CharField(
         max_length=20, 
         choices=EVENT_TYPES, 
-        default='stock_order',  # ✅ แก้จาก stock_check เป็น stock_order
+        default='stock_order',
         verbose_name="ประเภท"
     )
     priority = models.CharField(
@@ -550,7 +497,6 @@ class CustomEvent(models.Model):
         verbose_name="ระดับความสำคัญ"
     )
     notes = models.TextField(blank=True, null=True, verbose_name="หมายเหตุ")
-    
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -559,9 +505,7 @@ class CustomEvent(models.Model):
         null=True,
         blank=True
     )
-    
     is_shared = models.BooleanField(default=True, verbose_name="แชร์ให้ทุกคน")
-    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -571,4 +515,5 @@ class CustomEvent(models.Model):
         ordering = ['-priority', 'date', '-created_at']
     
     def __str__(self):
-        return f"[{self.get_priority_display()}] {self.title} ({self.date})"
+        priority_display = self.get_priority_display()
+        return f"[{priority_display}] {self.title} ({self.date})"
