@@ -33,11 +33,16 @@ export default function Register() {
 
     try {
       setLoading(true);
-      await axios.post(`${AUTH_BASE}/register/`, {
+      // ✅ สร้าง payload และเพิ่ม phone ถ้ามีการกรอก
+      const payload = {
         username: form.username,
         email: form.email,
         password: form.password,
-      });
+      };
+      if (form.phone) {
+        payload.phone = form.phone;
+      }
+      await axios.post(`${AUTH_BASE}/register/`, payload);
       setOk("สมัครสมาชิกสำเร็จ! กำลังพาไปหน้าเข้าสู่ระบบ…");
       setTimeout(() => nav("/login", { replace: true }), 1200);
     } catch (e2) {

@@ -7,7 +7,7 @@ export default function ProductsPage() {
   const [items, setItems] = useState([]);
   const [cats, setCats] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [totalInventoryValue, setTotalInventoryValue] = useState(0);  // ✅ เพิ่ม state
+  const [totalInventoryValue, setTotalInventoryValue] = useState(0);
   
   // Basic Search
   const [q, setQ] = useState("");
@@ -39,7 +39,7 @@ export default function ProductsPage() {
 
       const { data } = await api.get("/listings/", { params });
       setItems(data.results ?? data ?? []);
-      setCurrentPage(1); // รีเซ็ตหน้าเมื่อค้นหาใหม่
+      setCurrentPage(1);
     } catch (err) {
       console.error("load listings error:", err);
       setItems([]);
@@ -57,16 +57,13 @@ export default function ProductsPage() {
     }
   };
 
-  // ✅ เพิ่ม Effect เพื่อคำนวณมูลค่าสต๊อก จากข้อมูล items เท่านั้น
+  // ✅ คำนวณมูลค่าสต็อก
   useEffect(() => {
     const total = items.reduce((sum, p) => {
-      // ✅ FIXED: ใช้ selling_price (ราคาขาย) และ quantity
       const price = parseFloat(p.selling_price) || 0;
       const qty = parseFloat(p.quantity) || 0;
-      console.log(`${p.product_code}: price=${price}, qty=${qty}, total=${price * qty}`);
       return sum + (price * qty);
     }, 0);
-    console.log("Total inventory value:", total);
     setTotalInventoryValue(total);
   }, [items]);
 
@@ -80,7 +77,7 @@ export default function ProductsPage() {
   const filteredItems = useMemo(() => {
     let result = [...items];
 
-    // ✅ FIXED: Filter ราคา - use selling_price
+    // Filter ราคา
     if (priceMin) {
       result = result.filter(item => Number(item.selling_price || item.sale_price || item.price || 0) >= Number(priceMin));
     }
@@ -123,7 +120,6 @@ export default function ProductsPage() {
           compareB = (b.product_name || b.title || b.name || "").toLowerCase();
           break;
         case "price":
-          // ✅ FIXED: Sort ราคา - use selling_price
           compareA = Number(a.selling_price || a.sale_price || a.price || 0);
           compareB = Number(b.selling_price || b.sale_price || b.price || 0);
           break;
@@ -225,7 +221,7 @@ export default function ProductsPage() {
         </div>
       </div>
 
-      {/* ✅ Total Inventory Value - Text Only */}
+      {/* ✅ Total Inventory Value */}
       <div className="text-center">
         <p className="text-gray-600 text-sm font-medium">รวมมูลค่าสินค้า</p>
         <p className="text-gray-800 text-2xl font-bold mt-1">฿{totalInventoryValue.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
@@ -447,14 +443,12 @@ export default function ProductsPage() {
 
               {!loading && paginatedItems.map((it) => (
                 <tr key={it.id} className="hover:bg-slate-50 transition-colors">
-                  {/* ✅ รหัสสินค้า */}
                   <td className="px-6 py-4">
                     <span className="font-mono font-semibold text-gray-700">
                       {it.product_code || it.code || "-"}
                     </span>
                   </td>
                   
-                  {/* ✅ รูป */}
                   <td className="px-6 py-4">
                     {it.image_url ? (
                       <img 
@@ -471,21 +465,18 @@ export default function ProductsPage() {
                     )}
                   </td>
                   
-                  {/* ✅ ชื่อสินค้า */}
                   <td className="px-6 py-4">
                     <span className="font-medium text-gray-800">
                       {it.title || it.product_name || it.name || "-"}
                     </span>
                   </td>
                   
-                  {/* ✅ หมวดหมู่ */}
                   <td className="px-6 py-4">
                     <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-medium">
                       {it.category_name || "-"}
                     </span>
                   </td>
                   
-                  {/* ✅ ราคา - FIXED: use selling_price */}
                   <td className="px-6 py-4 text-right">
                     <span className="font-semibold text-gray-800">
                       {Number(it.sale_price || it.selling_price || it.price || 0).toFixed(2)}
@@ -493,12 +484,10 @@ export default function ProductsPage() {
                     <span className="text-gray-500 text-xs ml-1">฿</span>
                   </td>
                   
-                  {/* ✅ หน่วย */}
                   <td className="px-6 py-4 text-center">
                     <span className="text-gray-600">{it.unit || "-"}</span>
                   </td>
                   
-                  {/* ✅ คงเหลือ */}
                   <td className="px-6 py-4 text-center">
                     <span className={`inline-flex items-center justify-center min-w-[60px] px-3 py-1.5 rounded-full font-bold text-sm ${
                       Number(it.quantity || 0) === 0 ? 'bg-rose-100 text-rose-700' :
@@ -509,7 +498,6 @@ export default function ProductsPage() {
                     </span>
                   </td>
                   
-                  {/* ✅ จัดการ */}
                   <td className="px-6 py-4">
                     <div className="flex items-center justify-center gap-2">
                       <button

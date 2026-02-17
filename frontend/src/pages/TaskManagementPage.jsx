@@ -33,22 +33,48 @@ export default function TaskManagementPage() {
     try {
       setLoading(true);
       const response = await api.get("/tasks/");
-      setTasks(response.data);
+      const taskData = Array.isArray(response.data) 
+        ? response.data 
+        : (response.data?.results || []);
+      setTasks(taskData);
     } catch (err) {
       console.error("Error fetching tasks:", err);
+      setTasks([]);
     } finally {
       setLoading(false);
     }
   };
 
+  // ✅ แก้ไข: ดึงพนักงานจาก API (backend ส่ง { users: [...], stats: {...} })
   const fetchUsers = async () => {
     try {
-      const response = await api.get("/users/");
-      const employees = response.data.filter(u => !u.is_staff && !u.is_superuser);
+      const response = await api.get("/auth/users/");
+      
+      let userData = [];
+      
+      // ✅ Backend ส่งข้อมูลแบบ { users: [...], stats: {...} }
+      if (response.data && Array.isArray(response.data.users)) {
+        userData = response.data.users;
+      } else if (Array.isArray(response.data)) {
+        userData = response.data;
+      } else if (response.data && Array.isArray(response.data.results)) {
+        userData = response.data.results;
+      }
+      
+      // ✅ ดึงเฉพาะพนักงาน (ไม่ใช่ superuser/admin)
+      const employees = userData.filter(u => !u.is_superuser);
       setUsers(employees);
+      
     } catch (err) {
       console.error("Error fetching users:", err);
+      setUsers([]);
     }
+  };
+
+  // ✅ Helper function แสดง role
+  const getUserRole = (user) => {
+    if (user.is_superuser) return 'ผู้ดูแลระบบ';
+    return 'พนักงาน';
   };
 
   const handleSubmit = async (e) => {
@@ -62,22 +88,18 @@ export default function TaskManagementPage() {
     try {
       setLoading(true);
       
-      // ✅ Clean data ก่อนส่ง - ส่งเฉพาะ field ที่ backend ต้องการ
       const submitData = {
         title: formData.title,
         description: formData.description || "",
         task_type: formData.task_type,
         assigned_to: parseInt(formData.assigned_to),
         priority: formData.priority,
-        due_date: formData.due_date, // format: yyyy-MM-ddTHH:mm
+        due_date: formData.due_date,
       };
       
-      // เพิ่ม optional fields ถ้ามีค่า
       if (formData.target_quantity) {
         submitData.target_quantity = parseInt(formData.target_quantity);
       }
-      
-      console.log("Submitting:", submitData);
       
       if (editingId) {
         await api.patch(`/tasks/${editingId}/`, submitData);
@@ -103,7 +125,6 @@ export default function TaskManagementPage() {
       fetchTasks();
     } catch (err) {
       console.error("Error saving task:", err);
-      console.error("Error response:", err.response?.data);
       alert("เกิดข้อผิดพลาด: " + JSON.stringify(err.response?.data || err.message));
     } finally {
       setLoading(false);
@@ -159,7 +180,6 @@ export default function TaskManagementPage() {
     return labels[status] || status;
   };
 
-  // ✅ Priority แบบไม่มี emoji
   const getPriorityStyle = (priority) => {
     const styles = {
       'low': 'bg-green-500',
@@ -180,7 +200,6 @@ export default function TaskManagementPage() {
     return labels[priority] || priority;
   };
 
-  // ✅ Task type ตรงกับ backend
   const getTaskTypeLabel = (taskType) => {
     const labels = {
       'stock_replenishment': '🎁 เติมสินค้า',
@@ -331,14 +350,20 @@ export default function TaskManagementPage() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="">-- เลือกพนักงาน --</option>
-                  {users.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.first_name && user.last_name 
-                        ? `${user.first_name} ${user.last_name}`
-                        : user.username}
-                    </option>
-                  ))}
+                  {users.map((user) => {
+                    const displayName = user.first_name && user.last_name 
+                      ? `${user.first_name} ${user.last_name}`
+                      : user.username;
+                    return (
+                      <option key={user.id} value={user.id}>
+                        {displayName} ({getUserRole(user)})
+                      </option>
+                    );
+                  })}
                 </select>
+                {users.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">⚠️ ไม่พบพนักงาน - กรุณาเพิ่มพนักงานในระบบก่อน</p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">ลำดับความสำคัญ</label>

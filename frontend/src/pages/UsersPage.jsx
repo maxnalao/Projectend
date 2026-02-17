@@ -68,9 +68,9 @@ export default function UsersPage() {
   const calculateStats = (userList) => {
     const stats = {
       total: userList.length,
-      admin: userList.filter(u => u.is_superuser).count,
+      admin: userList.filter(u => u.is_superuser).length, // ✅ แก้จาก .count เป็น .length
       staff: userList.filter(u => !u.is_superuser).length,
-      active: userList.filter(u => u.is_online).length, // ✅ ใช้ is_online แทน
+      active: userList.filter(u => u.is_online).length,
       inactive: userList.filter(u => !u.is_active).length
     };
     setStats(stats);
@@ -324,18 +324,16 @@ export default function UsersPage() {
                 const fullName = `${user.first_name || ""} ${user.last_name || ""}`.trim() || user.username;
                 const initial = fullName.charAt(0).toUpperCase();
                 const isAdmin = user.is_superuser;
-                const isOnline = user.is_online; // ✅ ใช้ is_online จาก API โดยตรง
+                const isOnline = user.is_online;
 
                 return (
                   <tr key={user.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        {/* ✅ Avatar พร้อม Online Indicator */}
                         <div className="relative">
                           <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
                             {initial}
                           </div>
-                          {/* ✅ จุดสถานะ Online/Offline */}
                           <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white ${
                             isOnline ? 'bg-green-500' : 'bg-gray-400'
                           }`}></div>
@@ -367,7 +365,6 @@ export default function UsersPage() {
                       )}
                     </td>
                     <td className="px-6 py-4 text-center">
-                      {/* ✅ สถานะ Real-time */}
                       <span
                         className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${
                           isOnline

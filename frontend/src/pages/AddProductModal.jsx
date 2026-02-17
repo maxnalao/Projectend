@@ -5,28 +5,21 @@ const submit = async (e) => {
   const fd = new FormData();
   fd.append("code", code);
   fd.append("name", name);
-  fd.append("price", String(price));
+  fd.append("cost_price", String(costPrice));     // ✅ แก้ไข
+  fd.append("selling_price", String(sellingPrice)); // ✅ แก้ไข
   fd.append("stock", String(qty));
   fd.append("unit", unit);
-  fd.append("category", String(categoryId)); // ส่งเป็น id
+  fd.append("category_name", categoryName);        // ✅ แก้ไข
   if (imageFile) fd.append("image", imageFile);
-
-  // ✅ ใช้ key ให้ตรงกับที่ระบบเก็บจริง
-  const token = localStorage.getItem("access");
 
   setSaving(true);
   try {
-    const { data: created } = await api.post("/products/", fd, {
-      // ไม่ต้อง set Content-Type เอง ให้ axios ใส่ boundary ให้
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
+    const { data: created } = await api.post("/products/", fd); // ✅ ใช้ api instance
     onSaved?.(created);
     onClose?.();
   } catch (err) {
-    const status = err?.response?.status;
-    const data = err?.response?.data;
-    console.error("create product error:", status, data);
-    alert(`บันทึกสินค้าไม่สำเร็จ (${status ?? "ERR"}) ${data ? JSON.stringify(data) : ""}`);
+    console.error("create product error:", err);
+    alert(`บันทึกสินค้าไม่สำเร็จ`);
   } finally {
     setSaving(false);
   }

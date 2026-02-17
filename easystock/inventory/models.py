@@ -469,7 +469,7 @@ class CustomEvent(models.Model):
     
     EVENT_TYPES = [
         ('stock_order', 'สั่งซื้อสินค้า'),
-        ('promotion', 'จัดโปรโมชั่น'),
+        ('stock_check', 'ตรวจนับสต็อก'),
         ('delivery', 'รับ/ส่งสินค้า'),
         ('meeting', 'ประชุม/นัดหมาย'),
         ('other', 'อื่นๆ'),
@@ -517,3 +517,5 @@ class CustomEvent(models.Model):
     def __str__(self):
         priority_display = self.get_priority_display()
         return f"[{priority_display}] {self.title} ({self.date})"
+    
+
