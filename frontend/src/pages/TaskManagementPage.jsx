@@ -45,14 +45,13 @@ export default function TaskManagementPage() {
     }
   };
 
-  // ✅ แก้ไข: ดึงพนักงานจาก API (backend ส่ง { users: [...], stats: {...} })
+
   const fetchUsers = async () => {
     try {
       const response = await api.get("/auth/users/");
       
       let userData = [];
       
-      // ✅ Backend ส่งข้อมูลแบบ { users: [...], stats: {...} }
       if (response.data && Array.isArray(response.data.users)) {
         userData = response.data.users;
       } else if (Array.isArray(response.data)) {
@@ -61,7 +60,6 @@ export default function TaskManagementPage() {
         userData = response.data.results;
       }
       
-      // ✅ ดึงเฉพาะพนักงาน (ไม่ใช่ superuser/admin)
       const employees = userData.filter(u => !u.is_superuser);
       setUsers(employees);
       
@@ -71,7 +69,6 @@ export default function TaskManagementPage() {
     }
   };
 
-  // ✅ Helper function แสดง role
   const getUserRole = (user) => {
     if (user.is_superuser) return 'ผู้ดูแลระบบ';
     return 'พนักงาน';

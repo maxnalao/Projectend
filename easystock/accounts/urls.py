@@ -1,4 +1,3 @@
-# accounts/urls.py
 from django.urls import path
 from . import views
 
@@ -16,5 +15,5 @@ urlpatterns = [
     
     # User Management (จัดการผู้ใช้ - Admin เท่านั้น)
     path('users/', views.UserManagementView.as_view(), name='user_list'),  # ✅ เปลี่ยนจาก UserListView
-    path('users/<int:user_id>/', views.UserEditView.as_view(), name='user_detail'),  # ✅ เปลี่ยนจาก UserDetailView
+    path('users/<int:user_id>/', views.UserEditView.as_view(), name='user_detail'),  
 ]

@@ -9,8 +9,8 @@ export default function AddProductPage() {
   const [form, setForm] = useState({
     code: "",
     name: "",
-    cost_price: "",      // ✅ NEW
-    selling_price: "",   // ✅ NEW
+    cost_price: "",      
+    selling_price: "",   
     qty: "",
     category: "",
     unit: "ชิ้น",
@@ -54,8 +54,8 @@ export default function AddProductPage() {
       const fd = new FormData();
       fd.append("code", form.code || `A${Date.now().toString().slice(-3)}`);
       fd.append("name", form.name);
-      fd.append("cost_price", String(form.cost_price));    // ✅ NEW
-      fd.append("selling_price", String(form.selling_price)); // ✅ NEW
+      fd.append("cost_price", String(form.cost_price));   
+      fd.append("selling_price", String(form.selling_price)); 
       fd.append("stock", String(form.qty));
       fd.append("unit", form.unit);
       fd.append("category_name", form.category);

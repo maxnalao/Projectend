@@ -205,10 +205,10 @@ export default function OverviewPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-gray-600 border-b sticky top-0">
                 <tr>
-                  <th className="px-4 py-3 text-left font-semibold">เวลา</th>
+                  <th className="px-4 py-3 text-left font-semibold w-20">เวลา</th>
                   <th className="px-4 py-3 text-left font-semibold">สินค้า</th>
-                  <th className="px-4 py-3 text-center font-semibold">ประเภท</th>
-                  <th className="px-4 py-3 text-right font-semibold">จำนวน</th>
+                  <th className="px-4 py-3 text-center font-semibold w-24">ประเภท</th>
+                  <th className="px-4 py-3 text-right font-semibold w-20">จำนวน</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -218,7 +218,9 @@ export default function OverviewPage() {
                   data.movements.slice(0, 6).map((mv) => (
                     <tr key={mv.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3 text-gray-500">{new Date(mv.date).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</td>
-                      <td className="px-4 py-3 font-medium text-gray-700">{mv.name}</td>
+                      <td className="px-4 py-3 font-medium text-gray-700 min-w-[150px] max-w-[250px]">
+                        <div className="line-clamp-2 break-words leading-tight">{mv.name}</div>
+                      </td>
                       <td className="px-4 py-3 text-center">
                         <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${mv.type === 'in' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                           {mv.type === 'in' ? 'รับเข้า' : 'เบิกออก'}

@@ -1,7 +1,3 @@
-# accounts/views.py
-"""
-Views แบบ 100% APIView - ไม่ใช้ Serializer เลย
-"""
 
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -37,7 +33,6 @@ def user_to_dict(user, request=None):
         'last_login': user.last_login,
     }
     
-    # จัดการรูปโปรไฟล์
     if hasattr(user, 'profile_image') and user.profile_image:
         try:
             if request:
@@ -61,7 +56,6 @@ class RegisterView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        # 1. รับข้อมูล
         username = request.data.get('username', '').strip()
         email = request.data.get('email', '').strip().lower()
         password = request.data.get('password', '')
@@ -69,35 +63,30 @@ class RegisterView(APIView):
         last_name = request.data.get('last_name', '').strip()
         phone = request.data.get('phone', '').strip()
         
-        # 2. เช็คว่ากรอกครบไหม
         if not username or not email or not password:
             return Response(
                 {'error': 'กรุณากรอก username, email และ password'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # 3. เช็ครหัสผ่านยาวพอไหม
         if len(password) < 6:
             return Response(
                 {'error': 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # 4. เช็คว่า username ซ้ำไหม
         if User.objects.filter(username=username).exists():
             return Response(
                 {'error': 'ชื่อผู้ใช้นี้มีคนใช้แล้ว'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # 5. เช็คว่า email ซ้ำไหม
         if User.objects.filter(email=email).exists():
             return Response(
                 {'error': 'อีเมลนี้มีคนใช้แล้ว'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # 6. สร้าง User ใหม่
         try:
             user = User.objects.create_user(
                 username=username,
@@ -107,7 +96,6 @@ class RegisterView(APIView):
                 last_name=last_name
             )
             
-            # เพิ่มเบอร์โทร
             if phone and hasattr(user, 'phone'):
                 user.phone = phone
                 user.save()
@@ -137,51 +125,42 @@ class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        # 1. รับข้อมูล
         login_id = request.data.get('username', '').strip()
         password = request.data.get('password', '')
         
-        # 2. เช็คว่ากรอกครบไหม
         if not login_id or not password:
             return Response(
                 {'error': 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # 3. หา user จาก username หรือ email
         user = None
         
         if '@' in login_id:
-            # เป็น email
             try:
                 user = User.objects.get(email__iexact=login_id)
             except User.DoesNotExist:
                 pass
         else:
-            # เป็น username
             try:
                 user = User.objects.get(username__iexact=login_id)
             except User.DoesNotExist:
                 pass
         
-        # 4. ถ้าไม่เจอ user
         if not user:
             return Response(
                 {'error': 'ไม่พบผู้ใช้นี้ในระบบ'}, 
                 status=status.HTTP_401_UNAUTHORIZED
             )
         
-        # 5. เช็ครหัสผ่าน
         if not user.check_password(password):
             return Response(
                 {'error': 'รหัสผ่านไม่ถูกต้อง'}, 
                 status=status.HTTP_401_UNAUTHORIZED
             )
         
-        # 6. สร้าง JWT Token
         refresh = RefreshToken.for_user(user)
         
-        # 7. อัปเดตสถานะ online
         user.is_online = True
         user.last_login = timezone.now()
         user.last_activity = timezone.now()
@@ -213,7 +192,6 @@ class RefreshTokenView(APIView):
             )
         
         try:
-            # สร้าง access token ใหม่
             refresh = RefreshToken(refresh_token)
             access_token = str(refresh.access_token)
             
@@ -256,10 +234,8 @@ class ProfileView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        """ดูโปรไฟล์"""
         user = request.user
         
-        # อัปเดตเวลาใช้งาน
         user.last_activity = timezone.now()
         user.is_online = True
         user.save(update_fields=['last_activity', 'is_online'])
@@ -270,20 +246,16 @@ class ProfileView(APIView):
         """แก้ไขโปรไฟล์"""
         user = request.user
         
-        # รับข้อมูลที่จะแก้
-        first_name = request.data.get('first_name')
-        last_name = request.data.get('last_name')
+        user.first_name = request.data.get('first_name', user.first_name).strip()
+        user.last_name = request.data.get('last_name', user.last_name).strip()
+        
         phone = request.data.get('phone')
-        
-        # แก้ไข
-        if first_name is not None:
-            user.first_name = first_name.strip()
-        
-        if last_name is not None:
-            user.last_name = last_name.strip()
-        
         if phone is not None and hasattr(user, 'phone'):
             user.phone = phone.strip()
+            
+        email = request.data.get('email')
+        if email:
+             user.email = email.strip().lower()
         
         user.save()
         
@@ -321,47 +293,40 @@ class ChangePasswordView(APIView):
     def post(self, request):
         user = request.user
         
-        # 1. รับข้อมูล
         current_password = request.data.get('current_password', '')
         new_password = request.data.get('new_password', '')
         confirm_password = request.data.get('confirm_password', '')
         
-        # 2. เช็คว่ากรอกครบไหม
         if not current_password or not new_password or not confirm_password:
             return Response(
                 {'error': 'กรุณากรอกข้อมูลให้ครบถ้วน'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # 3. เช็ครหัสผ่านใหม่ยาวพอไหม
         if len(new_password) < 6:
             return Response(
                 {'error': 'รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # 4. เช็ครหัสผ่านใหม่ตรงกันไหม
         if new_password != confirm_password:
             return Response(
                 {'error': 'รหัสผ่านใหม่ไม่ตรงกัน'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # 5. เช็ครหัสผ่านใหม่ซ้ำกับเดิมไหม
         if current_password == new_password:
             return Response(
                 {'error': 'รหัสผ่านใหม่ต้องไม่เหมือนรหัสผ่านเดิม'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # 6. เช็ครหัสผ่านปัจจุบันถูกไหม
         if not user.check_password(current_password):
             return Response(
                 {'error': 'รหัสผ่านปัจจุบันไม่ถูกต้อง'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # 7. เปลี่ยนรหัสผ่าน
         user.set_password(new_password)
         user.save()
         
@@ -387,7 +352,6 @@ class UserManagementView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        # 2. ตั้งสถานะ offline ให้ user ที่ไม่ได้ใช้งานนานกว่า 2 นาที
         now = timezone.now()
         offline_time = now - timedelta(minutes=2)
         
@@ -396,13 +360,10 @@ class UserManagementView(APIView):
             last_activity__lt=offline_time
         ).update(is_online=False)
         
-        # 3. ดึงข้อมูล user ทั้งหมด
         users = User.objects.all().order_by('-date_joined')
         
-        # 4. แปลงเป็น list
         user_list = [user_to_dict(user, request) for user in users]
         
-        # 5. คำนวณสถิติ
         total = users.count()
         admin_count = users.filter(is_superuser=True).count()
         staff_count = users.filter(is_superuser=False).count()
@@ -428,7 +389,6 @@ class UserEditView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def patch(self, request, user_id):
-        """แก้ไขผู้ใช้"""
         # เช็คว่าเป็น Admin
         if not request.user.is_superuser:
             return Response(
@@ -436,7 +396,6 @@ class UserEditView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        # หา user
         try:
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:
@@ -445,7 +404,6 @@ class UserEditView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        # แก้ไข
         first_name = request.data.get('first_name')
         last_name = request.data.get('last_name')
         email = request.data.get('email')
@@ -458,7 +416,6 @@ class UserEditView(APIView):
             user.last_name = last_name.strip()
         
         if email is not None:
-            # เช็ค email ซ้ำ
             if User.objects.filter(email=email).exclude(id=user.id).exists():
                 return Response(
                     {'error': 'อีเมลนี้มีคนใช้แล้ว'}, 
@@ -477,15 +434,12 @@ class UserEditView(APIView):
         })
 
     def delete(self, request, user_id):
-        """ลบผู้ใช้"""
-        # เช็คว่าเป็น Admin
         if not request.user.is_superuser:
             return Response(
                 {'error': 'คุณไม่มีสิทธิ์ทำการนี้'}, 
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        # หา user
         try:
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:
@@ -494,14 +448,12 @@ class UserEditView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        # เช็คว่าไม่ใช่ตัวเอง
         if user.id == request.user.id:
             return Response(
                 {'error': 'ไม่สามารถลบบัญชีตัวเองได้'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # ลบ
         username = user.username
         user.delete()
         

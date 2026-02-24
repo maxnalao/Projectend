@@ -1,10 +1,11 @@
 // src/pages/UsersPage.jsx
+// ✅ อัพเดทสถานะออนไลน์ทุก 3 วินาที
 import { useEffect, useState, useCallback } from "react";
 import api from "../api";
 
 export default function UsersPage() {
   const [users, setUsers] = useState([]);
-  const [stats, setStats] = useState({ total: 0, admin: 0, staff: 0, active: 0, inactive: 0 });
+  const [stats, setStats] = useState({ total: 0, admin: 0, staff: 0, online: 0 });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterRole, setFilterRole] = useState("");
@@ -20,32 +21,42 @@ export default function UsersPage() {
     is_superuser: false,
   });
 
-  // ✅ Load users function (reusable)
+  // ✅ Load users function
   const loadUsers = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
       const { data } = await api.get("/auth/users/");
       
+      let userList = [];
+      
       if (Array.isArray(data)) {
-        setUsers(data);
-        calculateStats(data);
+        userList = data;
       } else if (data.users && Array.isArray(data.users)) {
-        setUsers(data.users);
-        if (data.stats) {
-          setStats(data.stats);
-        } else {
-          calculateStats(data.users);
-        }
+        userList = data.users;
+      }
+      
+      setUsers(userList);
+      
+      if (data.stats) {
+        setStats({
+          total: data.stats.total || userList.length,
+          admin: data.stats.admin || userList.filter(u => u.is_superuser).length,
+          staff: data.stats.staff || userList.filter(u => !u.is_superuser).length,
+          online: data.stats.online || userList.filter(u => u.is_online).length,
+        });
       } else {
-        console.error("Unexpected API response format:", data);
-        setUsers([]);
+        setStats({
+          total: userList.length,
+          admin: userList.filter(u => u.is_superuser).length,
+          staff: userList.filter(u => !u.is_superuser).length,
+          online: userList.filter(u => u.is_online).length,
+        });
       }
     } catch (err) {
       console.error("Load users error:", err);
       if (showLoading) {
         alert("ไม่สามารถโหลดข้อมูลผู้ใช้ได้");
       }
-      setUsers([]);
     } finally {
       if (showLoading) setLoading(false);
     }
@@ -56,26 +67,14 @@ export default function UsersPage() {
     loadUsers();
   }, [loadUsers]);
 
-  // ✅ Polling - รีเฟรชข้อมูลทุก 30 วินาที สำหรับ Real-time Status
+  // ✅ Polling ทุก 3 วินาที สำหรับ Real-time Status
   useEffect(() => {
     const interval = setInterval(() => {
-      loadUsers(false); // ไม่แสดง loading spinner
-    }, 30000); // 30 วินาที
+      loadUsers(false);
+    }, 3000); // ✅ เปลี่ยนจาก 30000 เป็น 3000 (3 วินาที)
 
     return () => clearInterval(interval);
   }, [loadUsers]);
-
-  const calculateStats = (userList) => {
-    const stats = {
-      total: userList.length,
-      admin: userList.filter(u => u.is_superuser).length, // ✅ แก้จาก .count เป็น .length
-      staff: userList.filter(u => !u.is_superuser).length,
-      active: userList.filter(u => u.is_online).length,
-      inactive: userList.filter(u => !u.is_active).length
-    };
-    setStats(stats);
-    return stats;
-  };
 
   const filteredUsers = Array.isArray(users) ? users.filter(user => {
     const fullName = `${user.first_name || ""} ${user.last_name || ""}`.trim() || user.username;
@@ -117,11 +116,11 @@ export default function UsersPage() {
       
       const newUsers = users.map(u => u.id === selectedUser.id ? updatedUser : u);
       setUsers(newUsers);
-      calculateStats(newUsers);
       
       setEditModalOpen(false);
       setSelectedUser(null);
       alert("แก้ไขข้อมูลสำเร็จ");
+      loadUsers(false); // ✅ รีเฟรชข้อมูลหลังแก้ไข
     } catch (err) {
       console.error("Edit user error:", err);
       alert("แก้ไขข้อมูลไม่สำเร็จ: " + (err.response?.data?.detail || "เกิดข้อผิดพลาด"));
@@ -132,10 +131,8 @@ export default function UsersPage() {
     if (window.confirm(`ต้องการลบผู้ใช้ "${user.username}" ใช่หรือไม่?`)) {
       try {
         await api.delete(`/auth/users/${user.id}/`);
-        const newUsers = users.filter(u => u.id !== user.id);
-        setUsers(newUsers);
-        calculateStats(newUsers);
         alert("ลบผู้ใช้สำเร็จ");
+        loadUsers(false); // ✅ รีเฟรชข้อมูลหลังลบ
       } catch (err) {
         console.error("Delete user error:", err);
         alert("ลบผู้ใช้ไม่สำเร็จ: " + (err.response?.data?.detail || "เกิดข้อผิดพลาด"));
@@ -178,7 +175,7 @@ export default function UsersPage() {
         {/* ✅ แสดงสถานะ Real-time */}
         <div className="flex items-center gap-2 text-xs text-gray-500">
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-          อัพเดทอัตโนมัติทุก 30 วินาที
+          อัพเดทอัตโนมัติทุก 3 วินาที
         </div>
       </div>
 
@@ -226,11 +223,12 @@ export default function UsersPage() {
           </div>
         </div>
 
+        {/* ✅ กล่องออนไลน์ — ใช้ stats.online แทน stats.active */}
         <div className="bg-gradient-to-br from-green-500 to-teal-600 rounded-xl p-5 text-white shadow-lg">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-green-100 text-sm mb-1">ออนไลน์</p>
-              <p className="text-3xl font-bold">{stats.active}</p>
+              <p className="text-3xl font-bold">{stats.online}</p>
             </div>
             <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm">
               <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -334,7 +332,8 @@ export default function UsersPage() {
                           <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
                             {initial}
                           </div>
-                          <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white ${
+                          {/* ✅ จุดสถานะออนไลน์แบบ Real-time */}
+                          <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white transition-colors duration-300 ${
                             isOnline ? 'bg-green-500' : 'bg-gray-400'
                           }`}></div>
                         </div>
@@ -365,8 +364,9 @@ export default function UsersPage() {
                       )}
                     </td>
                     <td className="px-6 py-4 text-center">
+                      {/* ✅ สถานะออนไลน์/ออฟไลน์ แบบ Real-time พร้อม transition */}
                       <span
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-300 ${
                           isOnline
                             ? 'bg-green-100 text-green-700'
                             : 'bg-gray-100 text-gray-600'

@@ -13,13 +13,11 @@ export default function ProfilePage() {
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
   
-  // สำหรับจัดการรูปโปรไฟล์
   const [profileImage, setProfileImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const fileInputRef = useRef(null);
 
-  // ✅ Change Password Modal State
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [passwordForm, setPasswordForm] = useState({
     current_password: "",
@@ -32,7 +30,7 @@ export default function ProfilePage() {
   const [showCurrentPw, setShowCurrentPw] = useState(false);
   const [showNewPw, setShowNewPw] = useState(false);
 
-  // โหลดข้อมูลผู้ใช้จริง
+
   useEffect(() => {
     loadProfile();
   }, []);
@@ -154,23 +152,22 @@ export default function ProfilePage() {
     }
   };
 
-  const handleSave = async () => {
+const handleSave = async () => {
     setSaving(true);
     try {
-      const { data } = await api.patch("/auth/user/", {
-        username: form.username,
-        email: form.email,
-        first_name: form.first_name,
-        last_name: form.last_name,
-        phone: form.phone,  // ✅ เพิ่ม phone
-      });
-      setUser(data);
+
+      const { data } = await api.patch("/auth/user/", form); 
+
+      const updatedUser = data.user; 
+
+      setUser(updatedUser);
+      setForm(updatedUser);
       setIsEditing(false);
       alert("บันทึกข้อมูลสำเร็จ");
       await refreshUser();
     } catch (err) {
       console.error("Update profile error:", err);
-      alert("บันทึกไม่สำเร็จ: " + (err.response?.data?.detail || "เกิดข้อผิดพลาด"));
+      alert("บันทึกไม่สำเร็จ: " + (err.response?.data?.error || "เกิดข้อผิดพลาด"));
     } finally {
       setSaving(false);
     }
@@ -294,9 +291,15 @@ export default function ProfilePage() {
     );
   }
 
-  const fullName = user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.username;
-  const initial = fullName.charAt(0).toUpperCase();
-  const isAdmin = user.is_superuser || user.is_staff;
+  const fullName = (user?.first_name && user?.last_name) 
+    ? `${user.first_name} ${user.last_name}` 
+    : (user?.username || "User");
+
+  const initial = fullName && fullName.length > 0 
+    ? fullName.charAt(0).toUpperCase() 
+    : "U";
+
+  const isAdmin = user?.is_superuser || user?.is_staff;
   const roleText = isAdmin ? "ผู้ดูแลระบบ" : "ผู้ใช้งาน";
   const roleColor = isAdmin ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700";
 

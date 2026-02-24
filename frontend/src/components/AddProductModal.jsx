@@ -7,13 +7,11 @@ const UNIT_OPTIONS = ["ชิ้น", "ขวด", "กล่อง", "ซอง
 export default function AddProductModal({ open, onClose, onSaved }) {
   const dialogRef = useRef(null);
 
-  // โหมด: "new" = เพิ่มสินค้าใหม่, "existing" = เพิ่มสต็อกสินค้าเดิม
   const [mode, setMode] = useState("new");
 
-  // สำหรับโหมดเพิ่มสินค้าใหม่
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
-  const [sellingPrice, setSellingPrice] = useState("");  // ✅ CHANGED: renamed from price
+  const [sellingPrice, setSellingPrice] = useState(""); 
   const [qty, setQty] = useState("");
   const [unit, setUnit] = useState("ชิ้น");
   const [categoryName, setCategoryName] = useState("");
@@ -21,14 +19,12 @@ export default function AddProductModal({ open, onClose, onSaved }) {
   const [imageFile, setImageFile] = useState(null);
   const [imageUrl, setImageUrl] = useState("");
 
-  // สำหรับโหมดเพิ่มสต็อกสินค้าเดิม
   const [existingProducts, setExistingProducts] = useState([]);
   const [selectedProductId, setSelectedProductId] = useState("");
   const [addQty, setAddQty] = useState("");
 
   const [saving, setSaving] = useState(false);
 
-  // โหลดหมวดหมู่และสินค้าที่มีอยู่
   useEffect(() => {
     if (!open) return;
     (async () => {
@@ -40,10 +36,9 @@ export default function AddProductModal({ open, onClose, onSaved }) {
         for (const c of arr) map[c.name] = c.id;
         setCatMap(map);
 
-        // โหลดสินค้าทั้งหมด (เรียงตามสต็อกน้อย -> มาก)
         const { data: prodData } = await api.get("/products/");
         const products = Array.isArray(prodData) ? prodData : (prodData.results ?? []);
-        // เรียงสินค้าที่หมดและใกล้หมดไว้ด้านบน
+
         const sorted = products.sort((a, b) => Number(a.stock) - Number(b.stock));
         setExistingProducts(sorted);
       } catch {
@@ -65,7 +60,7 @@ export default function AddProductModal({ open, onClose, onSaved }) {
       setMode("new");
       setCode("");
       setName("");
-      setSellingPrice("");  // ✅ CHANGED
+      setSellingPrice("");  
       setQty("");
       setUnit("ชิ้น");
       setCategoryName("");
@@ -81,7 +76,7 @@ export default function AddProductModal({ open, onClose, onSaved }) {
 
   const canSubmitNew = useMemo(
     () => name.trim() && categoryName && Number(sellingPrice) >= 0 && Number(qty) >= 0,  // ✅ CHANGED
-    [name, categoryName, sellingPrice, qty]  // ✅ CHANGED
+    [name, categoryName, sellingPrice, qty]
   );
 
   const canSubmitExisting = useMemo(

@@ -1,6 +1,4 @@
-// src/components/FestivalCalendar.jsx
-// ✅ รวมวันหยุดไทย + เทศกาล + บันทึกของฉัน (customEvents)
-// ✅ ใช้ CustomEventDetailModal แทน modal เดิม
+
 import React, { useEffect, useState, useMemo } from 'react';
 import api from '../api';
 import CustomEventDetailModal from './CustomEventDetailModal';
@@ -39,7 +37,6 @@ const FestivalCalendar = () => {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showDetail, setShowDetail] = useState(false);
 
-  // ✅ Priority colors สำหรับแสดงวงกลมสี
   const PRIORITY_COLORS = {
     low: { dot: 'bg-green-500', label: 'ต่ำ' },
     medium: { dot: 'bg-yellow-500', label: 'ปกติ' },

@@ -19,7 +19,7 @@ const EmployeeDashboard = () => {
     pending: 0,
   });
 
-  // ✅ เพิ่ม state สำหรับบันทึกของ Admin
+ 
   const [adminEvents, setAdminEvents] = useState([]);
 
   const [loading, setLoading] = useState(true);
@@ -27,14 +27,13 @@ const EmployeeDashboard = () => {
   useEffect(() => {
     fetchDashboardData();
     fetchTasksData();
-    fetchAdminEvents(); // ✅ เรียกฟังก์ชันดึงบันทึกของ Admin
+    fetchAdminEvents(); 
   }, []);
 
   const fetchDashboardData = async () => {
     try {
       const { data: dashboardData } = await api.get('/dashboard-stats/');
       
-      // ✅ ดึง total stock จาก Listing API (เหมือน OverviewPage ของ Admin)
       try {
         const { data: listingsData } = await api.get("/listings/?active=1");
         const listingArr = Array.isArray(listingsData) ? listingsData : (listingsData.results ?? []);
@@ -45,7 +44,7 @@ const EmployeeDashboard = () => {
         
         setStats({
           ...dashboardData,
-          total_products: totalStock  // ✅ แทนที่ด้วย Listing stock
+          total_products: totalStock  
         });
       } catch {
         setStats(dashboardData);
@@ -68,7 +67,6 @@ const EmployeeDashboard = () => {
     }
   };
 
-  // ✅ ฟังก์ชันดึงบันทึกของ Admin
   const fetchAdminEvents = async () => {
     try {
       console.log('🔍 กำลังดึงข้อมูล Admin Events...');
@@ -77,7 +75,6 @@ const EmployeeDashboard = () => {
       setAdminEvents(response.data || []);
     } catch (error) {
       console.error('❌ Error fetching admin events:', error);
-      // ถ้า API ยังไม่มี ให้ใช้ค่าว่าง
       setAdminEvents([]);
     }
   };
@@ -176,6 +173,8 @@ const EmployeeDashboard = () => {
         </div>
       </div>
 
+
+
       {/* Calendar + Recent Movements + Low Stock - Side by Side */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left Side - Recent Movements + Low Stock */}
@@ -218,22 +217,18 @@ const EmployeeDashboard = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {stats.movements.slice(0, 6).map((mv) => (
-                      <tr key={mv.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-3 py-2.5 text-gray-500">
-                          {new Date(mv.date).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}
-                        </td>
-                        <td className="px-3 py-2.5 text-gray-700 font-medium">
-                          {mv.name}
-                        </td>
-                        <td className="px-3 py-2.5 text-center">
-                          <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
-                            mv.type === 'in' 
-                              ? 'bg-green-100 text-green-700' 
-                              : 'bg-red-100 text-red-700'
-                          }`}>
-                            {mv.type === 'in' ? 'รับเข้า' : 'เบิกออก'}
-                          </span>
-                        </td>
+<tr key={mv.id} className="hover:bg-gray-50 transition-colors">
+  <td className="px-3 py-3 text-gray-500 text-xs whitespace-nowrap">
+    {mv.date ? new Date(mv.date).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '-'}
+  </td>
+  <td className="px-3 py-3 font-medium text-gray-700">
+    <div className="truncate max-w-[160px] text-xs" title={mv.name}>{mv.name}</div>
+  </td>
+  <td className="px-3 py-3 text-center whitespace-nowrap">
+    <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold ${mv.type === 'in' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+      {mv.type === 'in' ? 'เข้า' : 'ออก'}
+    </span>
+  </td>
                         <td className={`px-3 py-2.5 text-right font-bold ${
                           mv.type === 'in' ? 'text-green-600' : 'text-red-600'
                         }`}>

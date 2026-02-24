@@ -2,14 +2,14 @@
 import { useState } from "react";
 import axios from "axios";
 import { useNavigate, Link } from "react-router-dom";
-import { useUser } from "../context/UserContext"; // ✅ เพิ่ม
+import { useUser } from "../context/UserContext"; 
 
 const AUTH_BASE =
   (import.meta.env.VITE_API || "http://127.0.0.1:8000/api") + "/auth";
 
 export default function Login() {
   const navigate = useNavigate();
-  const { refreshUser, setUser } = useUser(); // ✅ เพิ่ม
+  const { refreshUser, setUser } = useUser(); 
   const [form, setForm] = useState({ username: "", password: "" });
   const [showPw, setShowPw] = useState(false);
   const [err, setErr] = useState("");
@@ -42,9 +42,6 @@ export default function Login() {
       
       const userData = userResponse.data;
       
-      // ✅ 5. Redirect ตาม role
-      // Admin/Superuser → /overview (ภาพรวมระบบ)
-      // Staff → /dashboard (แดชบอร์ด)
       if (userData?.is_superuser || userData?.role === 'admin') {
         navigate("/overview", { replace: true });
       } else {

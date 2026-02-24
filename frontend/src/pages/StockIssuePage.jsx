@@ -85,7 +85,7 @@ export default function StockIssuePage() {
       const payload = {
         items: lines.map(l => ({ product: l.product.id, qty: l.qty })),
       };
-      // ✅ เปลี่ยนจาก /stock/issue/ เป็น /inventory/issue-products/
+
       await api.post("/issue-products/", payload);
       alert("เบิกสินค้าเรียบร้อย!");
       navigate("/products", { replace: true });

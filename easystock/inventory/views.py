@@ -1,4 +1,3 @@
-# inventory/views.py (CLEANED VERSION - ลบโค้ดที่ไม่ใช้แล้ว)
 
 from rest_framework import viewsets, status
 from rest_framework.viewsets import ReadOnlyModelViewSet
@@ -63,14 +62,11 @@ try:
 except Exception as e:
     print(f"⚠️ LINE SDK initialization error: {e}")
 
-
 # ==================== USER VIEWSET ====================
 
 class UserViewSet(ReadOnlyModelViewSet):
     """
-    📋 จัดการข้อมูลผู้ใช้ (Admin only)
-    - ดึงรายชื่อพนักงาน
-    - ใช้สำหรับมอบหมายงาน
+    จัดการข้อมูลผู้ใช้ (Admin only)
     """
     queryset = User.objects.all()
     serializer_class = UserSerializer
@@ -82,14 +78,13 @@ class UserViewSet(ReadOnlyModelViewSet):
             return User.objects.filter(is_staff=False, is_superuser=False)
         return User.objects.none()
 
-
 # ==================== PRODUCT VIEWSET ====================
 
 class ProductViewSet(viewsets.ModelViewSet):
     """
-    📦 จัดการสินค้าในคลัง
+    จัดการสินค้าในคลัง
     """
-    permission_classes = [IsAuthenticated]  # ✅ แก้จาก AllowAny
+    permission_classes = [IsAuthenticated]  
     serializer_class = ProductSerializer
     parser_classes = [MultiPartParser, FormParser] 
 
@@ -222,29 +217,24 @@ class ProductViewSet(viewsets.ModelViewSet):
 
 class CategoryViewSet(viewsets.ModelViewSet):
     """
-    📂 จัดการหมวดหมู่สินค้า
-    - เพิ่ม/แก้ไข/ลบหมวดหมู่
-    - แสดงจำนวนสินค้าในแต่ละหมวดหมู่
+    จัดการหมวดหมู่สินค้า
     """
     queryset = Category.objects.all().order_by("name")
     serializer_class = CategorySerializer
-    permission_classes = [IsAuthenticated]  # ✅ แก้จาก AllowAny
+    permission_classes = [IsAuthenticated]
 
 
 # ==================== LISTING VIEWSET ====================
 
 class ListingViewSet(viewsets.ModelViewSet):
     """
-    🏪 จัดการสินค้าที่แสดงขาย
-    - สินค้าที่เบิกออกมาขายแล้ว
-    - รองรับการค้นหาและกรอง
-    - ปิด/เปิดการแสดงขาย
+    จัดการสินค้าที่แสดงขาย
     """
     queryset = Listing.objects.select_related(
         "product", "product__category"
     ).filter(product__is_deleted=False)
     serializer_class = ListingSerializer
-    permission_classes = [IsAuthenticated]  # ✅ แก้จาก AllowAny
+    permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser] 
     http_method_names = ["get", "patch", "post", "delete"]
 
@@ -292,7 +282,7 @@ class ListingViewSet(viewsets.ModelViewSet):
 
 class TaskViewSet(viewsets.ModelViewSet):
     """
-    📋 จัดการงานที่มอบหมาย
+    จัดการงานที่มอบหมาย
     """
     serializer_class = TaskSerializer
     permission_classes = [IsAuthenticated]
@@ -361,17 +351,13 @@ class TaskViewSet(viewsets.ModelViewSet):
                 status=400
             )
 
-
 # ==================== API FUNCTIONS ====================
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def issue_products(request):
     """
-    🚚 เบิกสินค้าออกจากคลัง
-    - ลดสต็อกในคลัง
-    - สร้าง Listing สำหรับขาย
-    - ส่ง LINE notification
+    เบิกสินค้าออกจากคลัง
     """
     items = request.data.get("items", [])
     if not isinstance(items, list) or not items:
@@ -470,9 +456,8 @@ def issue_products(request):
 
 
 @api_view(["POST", "PATCH", "DELETE"])
-@permission_classes([IsAuthenticated])  # ✅ แก้จาก AllowAny
+@permission_classes([IsAuthenticated])
 def product_unlist(request, pk: int):
-    """❌ ยกเลิกการแสดงขายสินค้า"""
     try:
         product = Product.objects.get(pk=pk, is_deleted=False)
     except Product.DoesNotExist:
@@ -498,14 +483,10 @@ def product_unlist(request, pk: int):
 
 
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])  # ✅ แก้จาก AllowAny
+@permission_classes([IsAuthenticated])
 def dashboard_stats(request):
     """
-    📊 สถิติแดชบอร์ด
-    - จำนวนสินค้า, สต็อกต่ำ
-    - รับเข้า/เบิกออกวันนี้
-    - มูลค่าสต็อกทั้งหมด
-    - ประวัติการเคลื่อนไหว
+    สถิติแดชบอร์ด
     """
     from zoneinfo import ZoneInfo
     from datetime import time
@@ -632,13 +613,10 @@ def dashboard_stats(request):
 @permission_classes([IsAuthenticated])
 def movement_history(request):
     """
-    📜 ประวัติการเคลื่อนไหวสินค้า
-    - รับเข้า (in) และเบิกออก (out)
-    - แสดงผู้ดำเนินการ + รูปโปรไฟล์
-    - รองรับการค้นหาและกรองตามวันที่
+    ประวัติการเคลื่อนไหวสินค้า
     """
     from django.db.models import Q
-    from .models import Issue, IssueLine, Product
+    from .models import Issue, Product
     
     search = request.query_params.get('search', '')
     start_date = request.query_params.get('start_date', '')
@@ -767,7 +745,6 @@ def movement_history(request):
 
 @csrf_exempt
 def line_webhook(request):
-    """💬 รับ webhook จาก LINE (สำหรับเชื่อมต่อและแจ้งเตือน)"""
     print("🔥 WEBHOOK CALLED!")
     
     if not LINE_AVAILABLE: 
@@ -796,7 +773,6 @@ def line_webhook(request):
 if LINE_AVAILABLE and line_service:
     @line_service.handler.add(MessageEvent, message=TextMessage)
     def handle_text_message(event):
-        """จัดการข้อความที่ส่งมาจาก LINE"""
         print("📩 MESSAGE RECEIVED!")
         print(f"Text: {event.message.text}")
         print(f"User ID: {event.source.user_id}")
@@ -804,7 +780,6 @@ if LINE_AVAILABLE and line_service:
         user_id = event.source.user_id
         text = event.message.text.strip()
         
-        # Case 1: รหัส 6 หลัก
         if len(text) == 6 and text.isdigit():
             try:
                 settings_obj = NotificationSettings.objects.get(
@@ -826,8 +801,6 @@ if LINE_AVAILABLE and line_service:
                     "❌ รหัสไม่ถูกต้อง หรือหมดอายุแล้ว"
                 )
             return
-
-        # Case 2: เชื่อม [username]
         if text.startswith('เชื่อม ') or text.startswith('เชื่อม'):
             parts = text.split(maxsplit=1)
             if len(parts) == 2:
@@ -885,7 +858,6 @@ if LINE_AVAILABLE and line_service:
                 )
                 return
 
-        # Case 3: ขอรหัส/ช่วยเหลือ
         triggers = [
             'ขอรหัส', 'รหัส', 'code', 'id', 
             'userid', 'help', 'ช่วย'
@@ -912,7 +884,6 @@ if LINE_AVAILABLE and line_service:
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_connection_code(request):
-    """🔗 ขอรหัสเชื่อมต่อ LINE (6 หลัก)"""
     try:
         settings_obj, created = (
             NotificationSettings.objects.get_or_create(
@@ -940,7 +911,6 @@ def get_connection_code(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_line_user_id(request):
-    """✅ เช็คสถานะการเชื่อมต่อ LINE"""
     try:
         settings_obj = NotificationSettings.objects.get(
             user=request.user
@@ -960,7 +930,6 @@ def get_line_user_id(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_connected_users(request):
-    """👥 ดึงรายชื่อผู้ใช้ที่เชื่อมต่อ LINE แล้ว"""
     try:
         connected_settings = NotificationSettings.objects.filter(
             line_user_id__isnull=False
@@ -1018,7 +987,6 @@ def get_connected_users(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def send_to_selected_users(request):
-    """📤 ส่งข้อความถึงผู้ใช้ที่เลือก"""
     if not LINE_AVAILABLE or not line_service:
         return Response(
             {"error": "LINE service unavailable"}, 
@@ -1078,7 +1046,6 @@ def send_to_selected_users(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def broadcast_message(request):
-    """📢 ส่งข้อความถึงทุกคนที่เชื่อมต่อ LINE"""
     if not LINE_AVAILABLE or not line_service:
         return Response(
             {"error": "LINE service unavailable"}, 
@@ -1127,7 +1094,6 @@ def broadcast_message(request):
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def delete_line_user_id(request):
-    """🔌 ยกเลิกการเชื่อมต่อ LINE"""
     try:
         settings_obj = NotificationSettings.objects.get(
             user=request.user
@@ -1142,7 +1108,6 @@ def delete_line_user_id(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def send_test_message(request):
-    """🧪 ส่งข้อความทดสอบ LINE"""
     if not LINE_AVAILABLE or not line_service:
         return Response(
             {"error": "LINE service unavailable"}, 
@@ -1187,7 +1152,6 @@ def send_test_message(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def send_low_stock_alerts(request):
-    """⚠️ ส่งแจ้งเตือนสินค้าใกล้หมด"""
     if not LINE_AVAILABLE: 
         return Response(
             {"error": "Service unavailable"}, 
@@ -1226,7 +1190,6 @@ def send_low_stock_alerts(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_line_profile(request):
-    """👤 ดึง LINE Profile"""
     try:
         settings_obj = NotificationSettings.objects.get(
             user=request.user
@@ -1251,15 +1214,11 @@ def get_line_profile(request):
 
 class FestivalViewSet(viewsets.ModelViewSet):
     """
-    🎉 จัดการเทศกาล
-    - สร้าง/แก้ไข/ลบเทศกาล
-    - ดูเทศกาลที่กำลังมาถึง (60 วัน)
-    - ดูปฏิทินเทศกาลตามเดือน/ปี
-    - ดูสินค้าขายดีของแต่ละเทศกาล
+    จัดการเทศกาล
     """
     queryset = Festival.objects.all()
     serializer_class = FestivalSerializer
-    permission_classes = [IsAuthenticated]  # ✅ แก้จาก AllowAny
+    permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
         if self.action == 'with_best_sellers':
@@ -1353,15 +1312,11 @@ class FestivalViewSet(viewsets.ModelViewSet):
 
 class BestSellerViewSet(viewsets.ModelViewSet):
     """
-    🏆 วิเคราะห์สินค้าขายดี
-    - ดู Top N สินค้าขายดี (แยกตามช่วงเวลา)
-    - คาดการณ์สินค้าสำหรับเทศกาลถัดไป
-    - วิเคราะห์สินค้าขายดีตามหมวดหมู่
-    - บันทึกสินค้าขายดีเป็นกลุ่ม
+    วิเคราะห์สินค้าขายดี
     """
     queryset = BestSeller.objects.all()
     serializer_class = BestSellerSerializer
-    permission_classes = [IsAuthenticated]  # ✅ แก้จาก AllowAny
+    permission_classes = [IsAuthenticated]
 
     @action(detail=False, methods=['get'])
     def top_products(self, request):
@@ -1638,11 +1593,7 @@ class BestSellerViewSet(viewsets.ModelViewSet):
 
 class EmployeeDashboardViewSet(viewsets.ModelViewSet):
     """
-    📊 แดชบอร์ดสำหรับพนักงาน
-    - จำนวนสินค้า, สต็อกต่ำ
-    - ยอดขายวันนี้
-    - เทศกาลที่กำลังมาถึง
-    - สินค้าขายดีวันนี้
+    แดชบอร์ดสำหรับพนักงาน
     """
     permission_classes = [IsEmployee]
     http_method_names = ['get']
@@ -1709,10 +1660,7 @@ class EmployeeDashboardViewSet(viewsets.ModelViewSet):
 
 class AdminDashboardViewSet(viewsets.ModelViewSet):
     """
-    💼 แดชบอร์ดสำหรับ Admin
-    - ข้อมูลการเงิน (มูลค่าสต็อก, กำไร)
-    - สถิติแยกตามหมวดหมู่
-    - สินค้ามูลค่าสูงสุด
+    แดชบอร์ดสำหรับ Admin
     """
     permission_classes = [IsAdmin]
     http_method_names = ['get']
@@ -1722,30 +1670,14 @@ class AdminDashboardViewSet(viewsets.ModelViewSet):
     def financial(self, request):
         products = Product.objects.filter(is_deleted=False)
         
-        total_inventory_value = 0
         total_selling_value = 0
-        total_profit = 0
         
         for p in products:
-            cost_value = float(p.cost_price) * p.stock
-            selling_value = float(p.selling_price) * p.stock
-            profit = selling_value - cost_value
-            
-            total_inventory_value += cost_value
-            total_selling_value += selling_value
-            total_profit += profit
-        
-        profit_margin = (
-            (total_profit / total_selling_value * 100) 
-            if total_selling_value > 0 
-            else 0
-        )
-        
+            total_selling_value += float(p.selling_price or 0) * p.stock
+
+
         return Response({
-            'total_inventory_value': total_inventory_value,
             'total_selling_value': total_selling_value,
-            'total_profit': total_profit,
-            'profit_margin': profit_margin,
             'total_products': products.count(),
             'total_stock_items': (
                 products.aggregate(Sum('stock'))['stock__sum'] or 0
@@ -1768,10 +1700,10 @@ class AdminDashboardViewSet(viewsets.ModelViewSet):
         top_products = Product.objects.filter(
             is_deleted=False, stock__gt=0
         ).annotate(
-            inventory_value=F('stock') * F('cost_price')
+            inventory_value=F('stock') * F('selling_price')
         ).values(
             'id', 'code', 'name', 'stock', 
-            'cost_price', 'selling_price', 'category__name'
+            'selling_price', 'category__name'
         ).order_by('-inventory_value')[:20]
         
         return Response({
@@ -1784,23 +1716,6 @@ class AdminDashboardViewSet(viewsets.ModelViewSet):
 class CustomEventViewSet(viewsets.ModelViewSet):
     """
     ระบบจัดการบันทึกส่วนตัว
-    
-    ฟังก์ชัน:
-    - สร้างบันทึก/เหตุการณ์ส่วนตัว
-    - กำหนดวันที่และระดับความสำคัญ
-    - แชร์บันทึกให้คนอื่นเห็นได้
-    - ดูบันทึกตามเดือน/ปี (แบบปฏิทิน)
-    - ดูบันทึกที่กำลังมาถึง
-    
-    ประเภทบันทึก:
-    - Personal (ส่วนตัว)
-    - Work (งาน)
-    - Meeting (ประชุม)
-    - Reminder (เตือนความจำ)
-    
-    สิทธิ์:
-    - ดูได้: บันทึกตัวเอง + บันทึกที่แชร์
-    - แก้ไข/ลบได้: เฉพาะบันทึกตัวเอง (หรือ Admin)
     """
     serializer_class = CustomEventSerializer
     permission_classes = [IsAuthenticated]
@@ -1812,24 +1727,17 @@ class CustomEventViewSet(viewsets.ModelViewSet):
         ).distinct()
     
     def perform_create(self, serializer):
-        """
-        บันทึก CustomEvent
-        - ถ้า Admin สร้าง → แชร์อัตโนมัติ (is_shared=True)
-        - ถ้าพนักงานสร้าง → ไม่แชร์ (is_shared=False)
-        """
         user = self.request.user
         
-        # ✅ ถ้า Admin สร้าง → แชร์อัตโนมัติ
         if user.is_superuser or user.is_staff:
             serializer.save(
                 created_by=user,
-                is_shared=True  # ✅ แชร์ให้ทุกคนเห็น
+                is_shared=True  
             )
         else:
             serializer.save(created_by=user)
     
     def perform_update(self, serializer):
-        """ฟังก์ชัน: เช็คสิทธิ์ก่อนแก้ไข"""
         instance = self.get_object()
         if (instance.created_by != self.request.user and 
             not self.request.user.is_staff):
@@ -1838,7 +1746,6 @@ class CustomEventViewSet(viewsets.ModelViewSet):
         serializer.save()
     
     def perform_destroy(self, instance):
-        """ฟังก์ชัน: เช็คสิทธิ์ก่อนลบ"""
         if (instance.created_by != self.request.user and 
             not self.request.user.is_staff):
             from rest_framework.exceptions import PermissionDenied
@@ -1847,7 +1754,6 @@ class CustomEventViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def my_events(self, request):
-        """ฟังก์ชันดูบันทึกของตัวเอง"""
         queryset = CustomEvent.objects.filter(
             created_by=request.user
         )
@@ -1856,7 +1762,6 @@ class CustomEventViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def calendar(self, request):
-        """ฟังก์ชันดูบันทึกตามเดือน/ปี (แสดงแบบปฏิทิน)"""
         year = request.query_params.get('year')
         month = request.query_params.get('month')
         
@@ -1877,7 +1782,6 @@ class CustomEventViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def upcoming(self, request):
-        """ฟังก์ชันดูบันทึกที่กำลังมาถึง (10 รายการแรก)"""
         today = timezone.now().date()
         queryset = self.get_queryset().filter(
             date__gte=today
@@ -1887,22 +1791,11 @@ class CustomEventViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def upcoming_shared(self, request):
-        """
-        ฟังก์ชันดูบันทึกที่แชร์ที่กำลังมาถึง (สำหรับ Dashboard)
-        
-        ใช้สำหรับ:
-        - แสดงบันทึกของ Admin ในหน้า Dashboard พนักงาน
-        - แสดงเฉพาะบันทึกที่ is_shared=True
-        - แสดง 10 รายการถัดไป
-        
-        API Endpoint: GET /api/custom-events/upcoming_shared/
-        """
         today = timezone.now().date()
         
-        # ✅ ดึงเฉพาะบันทึกที่แชร์
         queryset = CustomEvent.objects.filter(
-            is_shared=True,  # ✅ เฉพาะที่แชร์
-            date__gte=today   # ✅ วันนี้เป็นต้นไป
+            is_shared=True,
+            date__gte=today 
         ).select_related('created_by').order_by('date')[:10]
         
         serializer = self.get_serializer(queryset, many=True)

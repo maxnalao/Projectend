@@ -7,7 +7,7 @@ from .models import (
 # ================ Product Admin ================
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ['code', 'name', 'category', 'cost_price', 'selling_price', 'stock', 'created_at']
+    list_display = ['code', 'name', 'category','selling_price', 'stock', 'created_at']
     list_filter = ['category', 'on_sale', 'is_deleted', 'created_at']
     search_fields = ['code', 'name']
     readonly_fields = ['created_at']
@@ -16,7 +16,7 @@ class ProductAdmin(admin.ModelAdmin):
             'fields': ('code', 'name', 'category', 'unit')
         }),
         ('ราคา', {
-            'fields': ('cost_price', 'selling_price', 'price')
+            'fields': ('selling_price', 'price')
         }),
         ('สต็อก', {
             'fields': ('stock', 'initial_stock')

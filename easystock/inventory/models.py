@@ -15,48 +15,26 @@ class Category(models.Model):
 
 # ================ CLASS 2: Product ================
 class Product(models.Model):
+
     code = models.CharField(max_length=50, db_index=True)
     name = models.CharField(max_length=200)
-    
-    # ✅ PRICE FIELDS
-    cost_price = models.DecimalField(
-        max_digits=10, 
-        decimal_places=2, 
-        default=0, 
-        help_text="ราคาต้นทุน/ราคาซื้อ"
-    )
-    selling_price = models.DecimalField(
-        max_digits=10, 
-        decimal_places=2, 
-        default=0, 
-        help_text="ราคาขาย/ราคาขายปลีก"
-    )
-    
+    selling_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     unit = models.CharField(max_length=50, default="ชิ้น")
     stock = models.IntegerField(default=0)
-    initial_stock = models.IntegerField(
-        default=0, 
-        help_text="Stock when first received in"
-    )
+    initial_stock = models.IntegerField(default=0)
     image = models.ImageField(upload_to="products/", blank=True, null=True)
-    category = models.ForeignKey(
-        Category, 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True
-    )
+    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True)
     on_sale = models.BooleanField(default=False)
     is_deleted = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True
-    )
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
 
     def __str__(self): 
         return self.name
+    
+    def update_stock(self, amount):
+        self.stock += amount
+        self.save()
 
     class Meta:
         constraints = [
@@ -70,20 +48,37 @@ class Product(models.Model):
 
 # ================ CLASS 3: Issue ================
 class Issue(models.Model):
-    created_at = models.DateTimeField(auto_now_add=True)
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, 
         on_delete=models.SET_NULL, 
         null=True, 
         blank=True
     )
+    created_at = models.DateTimeField(auto_now_add=True)
+    STATUS_CHOICES = [
+        ('pending', 'รอดำเนินการ'),
+        ('completed', 'เสร็จสิ้น'),
+        ('cancelled', 'ยกเลิก'),
+    ]
+    status = models.CharField(
+        max_length=20, 
+        choices=STATUS_CHOICES,
+        default='pending'
+    )
+
+    def __str__(self):
+        return f"Issue #{self.id} ({self.status})"
+
+    def get_total_items(self):
+        return sum(line.qty for line in self.lines.all())
 
 
 # ================ CLASS 4: IssueLine ================
 class IssueLine(models.Model):
     issue = models.ForeignKey(
         Issue, 
-        related_name="lines", 
+        related_name="lines",   
         on_delete=models.CASCADE
     )
     product = models.ForeignKey(Product, on_delete=models.PROTECT)
@@ -118,7 +113,6 @@ class Listing(models.Model):
 class Festival(models.Model):
     """
     เก็บข้อมูลเทศกาล/วันพิเศษ
-    เช่น ปีใหม่, สงกราน, ลอยกระทง, วันเด็ก, วันสตรี
     """
     name = models.CharField(
         max_length=100,
@@ -179,18 +173,15 @@ class Festival(models.Model):
 
     @property
     def duration_days(self):
-        """คืนจำนวนวันของเทศกาล"""
         return (self.end_date - self.start_date).days + 1
 
     @property
     def is_upcoming(self):
-        """เช็คว่าเทศกาลกำลังมาถึง"""
         today = timezone.now().date()
         return self.start_date >= today
 
     @property
     def days_until(self):
-        """คืนจำนวนวันที่เหลือจนถึงเทศกาล"""
         today = timezone.now().date()
         if self.start_date > today:
             return (self.start_date - today).days
@@ -201,7 +192,6 @@ class Festival(models.Model):
 class BestSeller(models.Model):
     """
     บันทึกสินค้าขายดี/ยอดนิยมตามเทศกาล
-    ใช้สำหรับติดตามเทศกาลไหน สินค้าไหนขายดี
     """
     product = models.ForeignKey(
         Product,
@@ -261,7 +251,6 @@ class BestSeller(models.Model):
         return f"{self.product.name} - {self.festival.name} (Rank: {self.rank})"
 
     def save(self, *args, **kwargs):
-        """คำนวณ percentage_increase ก่อน save"""
         if self.last_year_count > 0:
             self.percentage_increase = (
                 (self.this_year_count - self.last_year_count) / 
@@ -271,7 +260,6 @@ class BestSeller(models.Model):
 
     @property
     def status(self):
-        """สถานะของสินค้า (up/down/same)"""
         if self.percentage_increase > 0:
             return 'up'
         elif self.percentage_increase < 0:
@@ -293,9 +281,8 @@ class BestSeller(models.Model):
 # ================ CLASS 8: Task ================
 class Task(models.Model):
     """
-    ✅ Model สำหรับการมอบหมายงานให้พนักงาน
+    Model สำหรับการมอบหมายงานให้พนักงาน
     """
-    
     TASK_TYPE_CHOICES = [
         ('stock_replenishment', '🎁 เติมสินค้า'),
         ('stock_issue', '📤 เบิกสต๊อก'),
@@ -432,21 +419,18 @@ class Task(models.Model):
     
     @property
     def is_overdue(self):
-        """เช็คว่างานเกินกำหนดหรือไม่"""
         if self.status == 'completed':
             return False
         return timezone.now() > self.due_date
     
     @property
     def days_until_due(self):
-        """คำนวณจำนวนวันจนถึงกำหนด"""
         if self.status == 'completed':
             return None
         delta = self.due_date.date() - timezone.now().date()
         return delta.days
     
     def mark_as_complete(self, notes=""):
-        """ทำเครื่องหมายว่างานเสร็จ"""
         self.status = 'completed'
         self.completed_at = timezone.now()
         if notes:
@@ -455,7 +439,6 @@ class Task(models.Model):
         self.save()
     
     def save(self, *args, **kwargs):
-        """Auto-update completed_at when status changes"""
         if self.status == 'completed' and not self.completed_at:
             self.completed_at = timezone.now()
         elif self.status != 'completed':
@@ -466,7 +449,6 @@ class Task(models.Model):
 # ================ CLASS 9: CustomEvent ================
 class CustomEvent(models.Model):
     """บันทึกของฉัน - เก็บในฐานข้อมูลแทน localStorage"""
-    
     EVENT_TYPES = [
         ('stock_order', 'สั่งซื้อสินค้า'),
         ('stock_check', 'ตรวจนับสต็อก'),

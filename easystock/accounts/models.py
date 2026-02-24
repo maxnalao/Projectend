@@ -1,4 +1,3 @@
-# accounts/models.py
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.db.models.signals import post_save
@@ -9,12 +8,19 @@ import uuid
 
 
 class User(AbstractUser):
+    ROLE_CHOICES = (
+        ('admin', 'Admin/Owner'),
+        ('employee', 'Employee'),
+    )
+
+    role = models.CharField(
+        max_length=20, 
+        choices=ROLE_CHOICES, 
+        default='employee',
+        verbose_name="บทบาท"
+    )
     profile_image = models.ImageField(upload_to='profiles/', null=True, blank=True)
-    
-    # ✅ เพิ่มเบอร์โทรศัพท์
     phone = models.CharField(max_length=20, null=True, blank=True, verbose_name="เบอร์โทรศัพท์")
-    
-    # ✅ สำหรับ Real-time Online Status
     is_online = models.BooleanField(default=False)
     last_activity = models.DateTimeField(null=True, blank=True)
     
@@ -51,8 +57,13 @@ class User(AbstractUser):
         self.is_online = True
         self.save(update_fields=['last_activity', 'is_online'])
 
+    def is_admin(self):
+        return self.role == 'admin'
+    
+    def is_employee(self):
+        return self.role == 'employee'
 
-# ✅ Model สำหรับ LINE Notification
+
 class NotificationSettings(models.Model):
     user = models.OneToOneField(
         User, 
@@ -72,46 +83,6 @@ class NotificationSettings(models.Model):
         return f"Settings for {self.user.username}"
 
 
-# ✅ Model สำหรับ User Roles (Admin/Employee)
-class UserProfile(models.Model):
-    ROLE_CHOICES = (
-        ('admin', 'Admin/Owner'),
-        ('employee', 'Employee'),
-    )
-    
-    user = models.OneToOneField(
-        User, 
-        on_delete=models.CASCADE, 
-        related_name='profile'
-    )
-    role = models.CharField(
-        max_length=20, 
-        choices=ROLE_CHOICES, 
-        default='employee'
-    )
-    department = models.CharField(
-        max_length=100, 
-        blank=True, 
-        null=True
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        verbose_name = "User Profile"
-        verbose_name_plural = "User Profiles"
-    
-    def __str__(self):
-        return f"{self.user.username} ({self.get_role_display()})"
-    
-    def is_admin(self):
-        return self.role == 'admin'
-    
-    def is_employee(self):
-        return self.role == 'employee'
-
-
-# ✅ NEW: Password Reset Token
 class PasswordResetToken(models.Model):
     """Token สำหรับ Reset Password ผ่าน Email"""
     user = models.ForeignKey(
@@ -144,15 +115,3 @@ class PasswordResetToken(models.Model):
         if not self.expires_at:
             self.expires_at = timezone.now() + timedelta(minutes=30)
         super().save(*args, **kwargs)
-
-
-# ✅ SIGNALS
-@receiver(post_save, sender=User)
-def create_user_profile(sender, instance, created, **kwargs):
-    if created:
-        UserProfile.objects.get_or_create(user=instance)
-
-@receiver(post_save, sender=User)
-def save_user_profile(sender, instance, **kwargs):
-    if hasattr(instance, 'profile'):
-        instance.profile.save()

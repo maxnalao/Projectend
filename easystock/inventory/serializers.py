@@ -1,4 +1,4 @@
-# inventory/serializers.py (CLEANED VERSION - ลบโค้ดที่ไม่ใช้แล้ว)
+# inventory/serializers.py (CLEANED VERSION - ลบ cost_price ออกทั้งหมด)
 
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
@@ -43,8 +43,6 @@ class ProductSerializer(serializers.ModelSerializer):
     display_name = serializers.SerializerMethodField()
     listing_title = serializers.SerializerMethodField()
     has_listing = serializers.SerializerMethodField()
-    profit = serializers.SerializerMethodField()
-    profit_margin = serializers.SerializerMethodField()
     inventory_value = serializers.SerializerMethodField()
     potential_revenue = serializers.SerializerMethodField()
     
@@ -53,7 +51,7 @@ class ProductSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'code', 'name',
             'display_name', 'listing_title', 'has_listing',
-            'cost_price', 'selling_price', 'profit', 'profit_margin',
+            'selling_price',
             'unit', 'stock', 'inventory_value', 'potential_revenue',
             'image', 'image_url', 'category', 'category_name',
             'on_sale', 'created_at', 'created_by'
@@ -93,17 +91,8 @@ class ProductSerializer(serializers.ModelSerializer):
         except:
             return False
     
-    def get_profit(self, obj):
-        return float(obj.selling_price - obj.cost_price)
-    
-    def get_profit_margin(self, obj):
-        if obj.selling_price > 0:
-            profit = obj.selling_price - obj.cost_price
-            return float((profit / obj.selling_price) * 100)
-        return 0.0
-    
     def get_inventory_value(self, obj):
-        return float(obj.cost_price * obj.stock)
+        return float(obj.selling_price * obj.stock)
     
     def get_potential_revenue(self, obj):
         return float(obj.selling_price * obj.stock)
@@ -124,35 +113,24 @@ class ListingSerializer(serializers.ModelSerializer):
         read_only=True
     )
     image_url = serializers.SerializerMethodField()
-    cost_price = serializers.SerializerMethodField()
     selling_price = serializers.SerializerMethodField()
-    profit = serializers.SerializerMethodField()
     
     class Meta:
         model = Listing
         fields = [
             'id', 'product', 'product_name', 'product_code',
             'category_name', 'title', 'sale_price', 'unit',
-            'cost_price', 'selling_price', 'profit',
+            'selling_price',
             'image', 'image_url', 'is_active', 'quantity', 'created_at'
         ]
         read_only_fields = ['created_at']
     
-    def get_cost_price(self, obj):
-        return float(obj.product.cost_price) if obj.product else 0
-    
     def get_selling_price(self, obj):
         return float(obj.product.selling_price) if obj.product else 0
-    
-    def get_profit(self, obj):
-        if not obj.product:
-            return 0
-        return float(obj.product.selling_price - obj.product.cost_price)
     
     def get_image_url(self, obj):
         request = self.context.get('request')
         
-        # ลองดึงรูปจาก Listing ก่อน
         if obj.image and hasattr(obj.image, 'url'):
             try:
                 if request:
@@ -161,7 +139,6 @@ class ListingSerializer(serializers.ModelSerializer):
             except:
                 pass
         
-        # ถ้าไม่มี ดึงจาก Product
         if obj.product and obj.product.image and hasattr(obj.product.image, 'url'):
             try:
                 if request:

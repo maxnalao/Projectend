@@ -420,10 +420,6 @@ export default function StockPage() {
                 <span className="w-2 h-2 rounded-full bg-amber-500"></span>
                 <span className="text-gray-600">ใกล้หมด: {statsLow}</span>
               </span>
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-                <span className="text-gray-600">หมด: {statsOut}</span>
-              </span>
             </div>
           </div>
         </div>
