@@ -1,9 +1,9 @@
-# inventory/serializers.py (CLEANED VERSION - ลบ cost_price ออกทั้งหมด)
+# inventory/serializers.py (CLEANED VERSION - ลบ BestSeller ออกแล้ว)
 
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import (
-    Product, Category, Listing, Festival, BestSeller, 
+    Product, Category, Listing, Festival,
     Task, CustomEvent
 )
 
@@ -155,92 +155,6 @@ class FestivalSerializer(serializers.ModelSerializer):
     duration_days = serializers.SerializerMethodField()
     is_upcoming = serializers.SerializerMethodField()
     days_until = serializers.SerializerMethodField()
-    best_sellers_count = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Festival
-        fields = [
-            'id', 'name', 'description', 'start_date', 'end_date',
-            'is_recurring', 'category', 'icon', 'color',
-            'duration_days', 'is_upcoming', 'days_until', 
-            'best_sellers_count',
-            'created_at', 'updated_at'
-        ]
-        read_only_fields = ['created_at', 'updated_at']
-
-    def get_duration_days(self, obj):
-        return obj.duration_days
-
-    def get_is_upcoming(self, obj):
-        return obj.is_upcoming
-
-    def get_days_until(self, obj):
-        return obj.days_until
-
-    def get_best_sellers_count(self, obj):
-        return obj.best_sellers.count()
-
-
-# ================ BestSeller Serializer ================
-class BestSellerSerializer(serializers.ModelSerializer):
-    product_name = serializers.CharField(
-        source='product.name', 
-        read_only=True
-    )
-    product_code = serializers.CharField(
-        source='product.code', 
-        read_only=True
-    )
-    festival_name = serializers.CharField(
-        source='festival.name', 
-        read_only=True
-    )
-    status_display = serializers.SerializerMethodField()
-
-    class Meta:
-        model = BestSeller
-        fields = [
-            'id', 'product', 'product_name', 'product_code',
-            'festival', 'festival_name',
-            'total_issued', 'percentage_increase', 'status_display',
-            'last_year_count', 'this_year_count', 'rank',
-            'recorded_date', 'notes',
-            'created_at', 'updated_at'
-        ]
-        read_only_fields = ['recorded_date', 'created_at', 'updated_at']
-
-    def get_status_display(self, obj):
-        return obj.status_display
-
-
-class BestSellerDetailSerializer(serializers.ModelSerializer):
-    product = serializers.SerializerMethodField()
-    festival = FestivalSerializer(read_only=True)
-
-    class Meta:
-        model = BestSeller
-        fields = '__all__'
-
-    def get_product(self, obj):
-        return {
-            'id': obj.product.id,
-            'name': obj.product.name,
-            'code': obj.product.code,
-            'category': (
-                obj.product.category.name 
-                if obj.product.category 
-                else None
-            ),
-            'unit': obj.product.unit
-        }
-
-
-# ================ FestivalWithBestSellers Serializer ================
-class FestivalWithBestSellersSerializer(serializers.ModelSerializer):
-    best_sellers = BestSellerSerializer(many=True, read_only=True)
-    duration_days = serializers.SerializerMethodField()
-    is_upcoming = serializers.SerializerMethodField()
-    days_until = serializers.SerializerMethodField()
 
     class Meta:
         model = Festival
@@ -248,7 +162,7 @@ class FestivalWithBestSellersSerializer(serializers.ModelSerializer):
             'id', 'name', 'description', 'start_date', 'end_date',
             'is_recurring', 'category', 'icon', 'color',
             'duration_days', 'is_upcoming', 'days_until',
-            'best_sellers', 'created_at', 'updated_at'
+            'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at']
 

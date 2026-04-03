@@ -1,4 +1,3 @@
-
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from datetime import timedelta
@@ -8,47 +7,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from .serializers import RegisterSerializer, UserSerializer  # ✅ เพิ่ม import
+
 User = get_user_model()
 
 
 # ================================================================
-# Helper Function - แปลง User → JSON
-# ================================================================
-
-def user_to_dict(user, request=None):
-    """แปลง User object เป็น dictionary (JSON)"""
-    data = {
-        'id': user.id,
-        'username': user.username,
-        'email': user.email,
-        'first_name': user.first_name,
-        'last_name': user.last_name,
-        'phone': getattr(user, 'phone', ''),
-        'is_staff': user.is_staff,
-        'is_superuser': user.is_superuser,
-        'is_active': user.is_active,
-        'is_online': getattr(user, 'is_online', False),
-        'last_activity': getattr(user, 'last_activity', None),
-        'date_joined': user.date_joined,
-        'last_login': user.last_login,
-    }
-    
-    if hasattr(user, 'profile_image') and user.profile_image:
-        try:
-            if request:
-                data['profile_image'] = request.build_absolute_uri(user.profile_image.url)
-            else:
-                data['profile_image'] = user.profile_image.url
-        except:
-            data['profile_image'] = None
-    else:
-        data['profile_image'] = None
-    
-    return data
-
-
-# ================================================================
-# 1. สมัครสมาชิก
+# 1. สมัครสมาชิก (ใช้ RegisterSerializer)
 # ================================================================
 
 class RegisterView(APIView):
@@ -56,62 +21,26 @@ class RegisterView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        username = request.data.get('username', '').strip()
-        email = request.data.get('email', '').strip().lower()
-        password = request.data.get('password', '')
-        first_name = request.data.get('first_name', '').strip()
-        last_name = request.data.get('last_name', '').strip()
-        phone = request.data.get('phone', '').strip()
-        
-        if not username or not email or not password:
+        serializer = RegisterSerializer(data=request.data)
+
+        if not serializer.is_valid():
             return Response(
-                {'error': 'กรุณากรอก username, email และ password'}, 
+                {'error': serializer.errors},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        if len(password) < 6:
-            return Response(
-                {'error': 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        if User.objects.filter(username=username).exists():
-            return Response(
-                {'error': 'ชื่อผู้ใช้นี้มีคนใช้แล้ว'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        if User.objects.filter(email=email).exists():
-            return Response(
-                {'error': 'อีเมลนี้มีคนใช้แล้ว'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
+
         try:
-            user = User.objects.create_user(
-                username=username,
-                email=email,
-                password=password,
-                first_name=first_name,
-                last_name=last_name
-            )
-            
-            if phone and hasattr(user, 'phone'):
-                user.phone = phone
-                user.save()
-            
-            # 7. ส่งข้อมูลกลับ
+            user = serializer.save()
             return Response(
                 {
                     'message': 'สมัครสมาชิกสำเร็จ!',
-                    'user': user_to_dict(user, request)
-                }, 
+                    'user': UserSerializer(user, context={'request': request}).data
+                },
                 status=status.HTTP_201_CREATED
             )
-            
         except Exception as e:
             return Response(
-                {'error': f'เกิดข้อผิดพลาด: {str(e)}'}, 
+                {'error': f'เกิดข้อผิดพลาด: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -166,11 +95,10 @@ class LoginView(APIView):
         user.last_activity = timezone.now()
         user.save()
         
-        # 8. ส่ง token กลับ
         return Response({
             'access': str(refresh.access_token),
             'refresh': str(refresh),
-            'user': user_to_dict(user, request)
+            'user': UserSerializer(user, context={'request': request}).data  # ✅ ใช้ UserSerializer
         }, status=status.HTTP_200_OK)
 
 
@@ -240,7 +168,7 @@ class ProfileView(APIView):
         user.is_online = True
         user.save(update_fields=['last_activity', 'is_online'])
         
-        return Response(user_to_dict(user, request))
+        return Response(UserSerializer(user, context={'request': request}).data)  # ✅ ใช้ UserSerializer
 
     def patch(self, request):
         """แก้ไขโปรไฟล์"""
@@ -261,7 +189,7 @@ class ProfileView(APIView):
         
         return Response({
             'message': 'อัปเดตข้อมูลสำเร็จ',
-            'user': user_to_dict(user, request)
+            'user': UserSerializer(user, context={'request': request}).data  # ✅ ใช้ UserSerializer
         })
 
 
@@ -345,7 +273,6 @@ class UserManagementView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        # 1. เช็คว่าเป็น Admin ไหม
         if not request.user.is_superuser:
             return Response(
                 {'error': 'คุณไม่มีสิทธิ์เข้าถึงข้อมูลนี้'}, 
@@ -362,7 +289,7 @@ class UserManagementView(APIView):
         
         users = User.objects.all().order_by('-date_joined')
         
-        user_list = [user_to_dict(user, request) for user in users]
+        user_list = UserSerializer(users, many=True, context={'request': request}).data  # ✅ ใช้ UserSerializer
         
         total = users.count()
         admin_count = users.filter(is_superuser=True).count()
@@ -389,7 +316,6 @@ class UserEditView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def patch(self, request, user_id):
-        # เช็คว่าเป็น Admin
         if not request.user.is_superuser:
             return Response(
                 {'error': 'คุณไม่มีสิทธิ์ทำการนี้'}, 
@@ -430,7 +356,7 @@ class UserEditView(APIView):
         
         return Response({
             'message': 'อัปเดตข้อมูลสำเร็จ',
-            'user': user_to_dict(user, request)
+            'user': UserSerializer(user, context={'request': request}).data  # ✅ ใช้ UserSerializer
         })
 
     def delete(self, request, user_id):

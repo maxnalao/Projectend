@@ -28,9 +28,10 @@ export default function OverviewPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const { data: dashboardData } = await api.get("/dashboard-stats/");
-      
-      // ✅ ดึง total stock จาก Listing API (เหมือน ProductsPage)
+
+      const { data: dashboardData } = await api.get("/admin-dashboard/overview/");
+
+      // ✅ ดึง total stock จาก Listing API
       try {
         const { data: listingsData } = await api.get("/listings/?active=1");
         const listingArr = Array.isArray(listingsData) ? listingsData : (listingsData.results ?? []);
@@ -38,10 +39,10 @@ export default function OverviewPage() {
           const qty = parseFloat(p.quantity) || 0;
           return sum + qty;
         }, 0);
-        
+
         setData({
           ...dashboardData,
-          total_products: totalStock  // ✅ แทนที่ด้วย Listing stock
+          total_products: totalStock,
         });
       } catch {
         setData(dashboardData);

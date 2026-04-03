@@ -1,67 +1,57 @@
 // src/pages/AdminFestivalPage.jsx
-// ✅ ใช้ API เก็บ Custom Events
-// ✅ เพิ่มปุ่มแก้ไขบันทึกใน sidebar
 import { useState, useEffect, useMemo } from "react";
 import api from "../api";
-import EditCustomEventModal from "../components/EditCustomEventModal"; // ✅ เพิ่ม import
+import EditCustomEventModal from "../components/EditCustomEventModal";
+import AddCustomEventModal from "../components/AddCustomEventModal";
 
 const GOOGLE_API_KEY = "AIzaSyAtdfhSI2DJHNjiYfX_wD6MRHkiL2EIZb4";
 
-// ✅ Event types พร้อม emoji
 const EVENT_TYPES = [
   { value: "stock_check", label: "ตรวจนับสต็อก", emoji: "📋", color: "bg-blue-100 border-blue-400 text-blue-800" },
   { value: "stock_order", label: "สั่งซื้อสินค้า", emoji: "🛒", color: "bg-green-100 border-green-400 text-green-800" },
-  { value: "delivery", label: "รับ/ส่งสินค้า", emoji: "🚚", color: "bg-orange-100 border-orange-400 text-orange-800" },
-  { value: "meeting", label: "ประชุม/นัดหมาย", emoji: "👥", color: "bg-indigo-100 border-indigo-400 text-indigo-800" },
-  { value: "other", label: "อื่นๆ", emoji: "📝", color: "bg-gray-100 border-gray-400 text-gray-800" },
+  { value: "delivery",    label: "รับ/ส่งสินค้า", emoji: "🚚", color: "bg-orange-100 border-orange-400 text-orange-800" },
+  { value: "meeting",     label: "ประชุม/นัดหมาย", emoji: "👥", color: "bg-indigo-100 border-indigo-400 text-indigo-800" },
+  { value: "other",       label: "อื่นๆ",          emoji: "📝", color: "bg-gray-100 border-gray-400 text-gray-800" },
 ];
 
 const HOLIDAY_COLORS = {
   selling_festival: "bg-pink-100 border-pink-500 text-pink-800",
-  national: "bg-red-100 border-red-400 text-red-800",
-  buddhist: "bg-orange-100 border-orange-400 text-orange-800",
-  royal: "bg-yellow-100 border-yellow-400 text-yellow-800",
-  observance: "bg-gray-100 border-gray-400 text-gray-700",
-  festival: "bg-green-100 border-green-400 text-green-800",
-  custom: "bg-blue-100 border-blue-400 text-blue-800",
+  national:         "bg-red-100 border-red-400 text-red-800",
+  buddhist:         "bg-orange-100 border-orange-400 text-orange-800",
+  royal:            "bg-yellow-100 border-yellow-400 text-yellow-800",
+  observance:       "bg-gray-100 border-gray-400 text-gray-700",
+  festival:         "bg-green-100 border-green-400 text-green-800",
+  custom:           "bg-blue-100 border-blue-400 text-blue-800",
 };
 
-// ✅ Priority colors สำหรับแสดงวงกลมสี
 const PRIORITY_COLORS = {
-  low: { dot: 'bg-green-500', label: 'ต่ำ' },
-  medium: { dot: 'bg-yellow-500', label: 'ปกติ' },
-  high: { dot: 'bg-red-500', label: 'สูง' },
-  urgent: { dot: 'bg-purple-500', label: 'ด่วน' },
+  low:    { dot: "bg-green-500",  label: "ต่ำ"  },
+  medium: { dot: "bg-yellow-500", label: "ปกติ" },
+  high:   { dot: "bg-red-500",    label: "สูง"  },
+  urgent: { dot: "bg-purple-500", label: "ด่วน" },
 };
 
 export default function AdminFestivalPage() {
-  const [activeTab, setActiveTab] = useState("calendar");
-  const [currentDate, setCurrentDate] = useState(new Date());
+  const [activeTab, setActiveTab]       = useState("calendar");
+  const [currentDate, setCurrentDate]   = useState(new Date());
   const [thaiHolidays, setThaiHolidays] = useState([]);
-  const [festivals, setFestivals] = useState([]);
+  const [festivals, setFestivals]       = useState([]);
   const [customEvents, setCustomEvents] = useState([]);
   const [selectedDate, setSelectedDate] = useState(null);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newEvent, setNewEvent] = useState({ title: "", date: "", type: "stock_order", notes: "", is_shared: true, priority: "medium" });
-  const [loading, setLoading] = useState(true);
-  const [apiError, setApiError] = useState(null);
+  const [showAddModal, setShowAddModal] = useState(false);      // ✅ ควบคุม AddCustomEventModal
+  const [addModalDate, setAddModalDate] = useState("");         // ✅ วันที่เริ่มต้นส่งให้ AddCustomEventModal
+  const [loading, setLoading]           = useState(true);
+  const [apiError, setApiError]         = useState(null);
   const [loadingHolidays, setLoadingHolidays] = useState(false);
-  const [editingEvent, setEditingEvent] = useState(null); // ✅ เพิ่ม state สำหรับแก้ไข
+  const [editingEvent, setEditingEvent] = useState(null);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  useEffect(() => {
-    fetchThaiHolidays(currentDate.getFullYear());
-  }, [currentDate.getFullYear()]);
+  useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     setLoading(true);
     try {
       const festivalsRes = await api.get("/festivals/");
       setFestivals(festivalsRes.data.results || festivalsRes.data || []);
-      
       const eventsRes = await api.get("/custom-events/");
       setCustomEvents(eventsRes.data.results || eventsRes.data || []);
     } catch (err) {
@@ -71,24 +61,20 @@ export default function AdminFestivalPage() {
     }
   };
 
+  useEffect(() => {
+    fetchThaiHolidays(currentDate.getFullYear());
+  }, [currentDate.getFullYear()]);
+
   const fetchThaiHolidays = async (year) => {
     setLoadingHolidays(true);
     setApiError(null);
-
     try {
-      const calendarId = 'th.th#holiday@group.v.calendar.google.com';
-      const timeMin = `${year}-01-01T00:00:00Z`;
-      const timeMax = `${year}-12-31T23:59:59Z`;
-      
-      const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?key=${GOOGLE_API_KEY}&timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true&orderBy=startTime`;
-
+      const calendarId = "th.th#holiday@group.v.calendar.google.com";
+      const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?key=${GOOGLE_API_KEY}&timeMin=${year}-01-01T00:00:00Z&timeMax=${year}-12-31T23:59:59Z&singleEvents=true&orderBy=startTime`;
       const response = await fetch(url);
-      
       if (!response.ok) throw new Error("Google API Error");
-      
       const result = await response.json();
-
-      if (result.items && result.items.length > 0) {
+      if (result.items?.length > 0) {
         const holidays = result.items.map((item) => ({
           date: item.start.date || item.start.dateTime.split("T")[0],
           name: item.summary,
@@ -96,12 +82,10 @@ export default function AdminFestivalPage() {
           type: mapHolidayType(item.summary),
           isHoliday: true,
         }));
-
         setThaiHolidays(holidays);
-        localStorage.setItem(`holidays_${year}`, JSON.stringify({ data: holidays, source: 'google_official' }));
+        localStorage.setItem(`holidays_${year}`, JSON.stringify({ data: holidays }));
       }
     } catch (err) {
-      console.error("Fetch error:", err);
       const cached = localStorage.getItem(`holidays_${year}`);
       if (cached) {
         setThaiHolidays(JSON.parse(cached).data);
@@ -115,45 +99,25 @@ export default function AdminFestivalPage() {
   };
 
   const mapHolidayType = (name) => {
-    const lowerName = name.toLowerCase();
-    const thaiName = name;
-    
-    if (lowerName.includes("new year") || thaiName.includes("ปีใหม่") || thaiName.includes("ขึ้นปีใหม่")) return "selling_festival";
-    if (lowerName.includes("songkran") || thaiName.includes("สงกรานต์")) return "selling_festival";
-    if (lowerName.includes("loy krathong") || thaiName.includes("ลอยกระทง")) return "selling_festival";
-    if (lowerName.includes("valentine") || thaiName.includes("วาเลนไทน์")) return "selling_festival";
-    if (lowerName.includes("chinese new year") || thaiName.includes("ตรุษจีน")) return "selling_festival";
-    if (lowerName.includes("mother") || thaiName.includes("แม่") || thaiName.includes("สิริกิติ์")) return "selling_festival";
-    if (lowerName.includes("father") || thaiName.includes("พ่อ") || thaiName.includes("ภูมิพล")) return "selling_festival";
-    
-    if (lowerName.includes("bucha") || lowerName.includes("buddhist") || lowerName.includes("phansa") || 
-        thaiName.includes("มาฆ") || thaiName.includes("วิสาข") || thaiName.includes("อาสาฬ") || 
-        thaiName.includes("เข้าพรรษา") || thaiName.includes("ออกพรรษา") || thaiName.includes("บูชา")) return "buddhist";
-    
-    if (lowerName.includes("king") || lowerName.includes("queen") || lowerName.includes("birthday") || 
-        lowerName.includes("coronation") || thaiName.includes("เฉลิม") || thaiName.includes("พระราช") || 
-        thaiName.includes("จักรี") || thaiName.includes("ปิยมหาราช") || thaiName.includes("รัชกาล")) return "royal";
-    
-    if (lowerName.includes("holiday") || thaiName.includes("หยุดชดเชย") || thaiName.includes("วันหยุด")) return "national";
-    
+    const l = name.toLowerCase();
+    if (l.includes("new year") || name.includes("ปีใหม่")) return "selling_festival";
+    if (l.includes("songkran") || name.includes("สงกรานต์")) return "selling_festival";
+    if (l.includes("loy krathong") || name.includes("ลอยกระทง")) return "selling_festival";
+    if (l.includes("valentine") || name.includes("วาเลนไทน์")) return "selling_festival";
+    if (l.includes("chinese new year") || name.includes("ตรุษจีน")) return "selling_festival";
+    if (l.includes("mother") || name.includes("แม่")) return "selling_festival";
+    if (l.includes("father") || name.includes("พ่อ")) return "selling_festival";
+    if (l.includes("bucha") || name.includes("มาฆ") || name.includes("วิสาข") || name.includes("เข้าพรรษา") || name.includes("ออกพรรษา")) return "buddhist";
+    if (l.includes("king") || l.includes("queen") || name.includes("เฉลิม") || name.includes("จักรี") || name.includes("รัชกาล")) return "royal";
+    if (name.includes("หยุดชดเชย") || name.includes("วันหยุด")) return "national";
     return "national";
   };
 
   const allEvents = useMemo(() => {
     const events = [];
-    
-    thaiHolidays.forEach((h) => {
-      events.push({ ...h, id: `holiday-${h.date}-${h.name}`, title: h.name, isFromAPI: true });
-    });
-    
-    festivals.forEach((f) => {
-      events.push({ id: `festival-${f.id}`, date: f.start_date, endDate: f.end_date, title: f.name, icon: f.icon, type: "festival", isFestival: true });
-    });
-    
-    customEvents.forEach((e) => {
-      events.push({ ...e, id: `custom-${e.id}`, title: e.title, type: "custom", isCustom: true, dbId: e.id });
-    });
-    
+    thaiHolidays.forEach((h) => events.push({ ...h, id: `holiday-${h.date}-${h.name}`, title: h.name, isFromAPI: true }));
+    festivals.forEach((f) => events.push({ id: `festival-${f.id}`, date: f.start_date, endDate: f.end_date, title: f.name, icon: f.icon, type: "festival", isFestival: true }));
+    customEvents.forEach((e) => events.push({ ...e, id: `custom-${e.id}`, title: e.title, type: "custom", isCustom: true, dbId: e.id }));
     return events;
   }, [thaiHolidays, festivals, customEvents]);
 
@@ -164,14 +128,11 @@ export default function AdminFestivalPage() {
     const lastDay = new Date(year, month + 1, 0);
     const startPadding = firstDay.getDay();
     const days = [];
-    
     for (let i = 0; i < startPadding; i++) days.push(null);
-    
     for (let d = 1; d <= lastDay.getDate(); d++) {
       const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
       const dayEvents = allEvents.filter((e) => e.date === dateStr);
-      days.push({
-        day: d, date: dateStr, events: dayEvents,
+      days.push({ day: d, date: dateStr, events: dayEvents,
         isToday: dateStr === new Date().toISOString().split("T")[0],
         isWeekend: (startPadding + d - 1) % 7 === 0 || (startPadding + d - 1) % 7 === 6,
         hasHoliday: dayEvents.some((e) => e.isHoliday),
@@ -180,94 +141,62 @@ export default function AdminFestivalPage() {
     return days;
   }, [currentDate, allEvents]);
 
+  const upcomingHolidays = useMemo(() => {
+    const today = new Date().toISOString().split("T")[0];
+    return allEvents.filter((e) => e.date >= today && (e.isHoliday || e.isFestival) && !e.isCustom)
+      .sort((a, b) => a.date.localeCompare(b.date)).slice(0, 10);
+  }, [allEvents]);
+
+  const currentMonthCustomEvents = useMemo(() => {
+    const monthPrefix = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`;
+    return allEvents.filter((e) => e.isCustom && e.date.startsWith(monthPrefix))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [allEvents, currentDate]);
+
+  const holidaysByType = useMemo(() => {
+    const grouped = { selling_festival: [], national: [], buddhist: [], royal: [], observance: [] };
+    thaiHolidays.forEach((h) => { if (grouped[h.type]) grouped[h.type].push(h); else grouped.observance.push(h); });
+    return grouped;
+  }, [thaiHolidays]);
+
   const handlePrevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
   const handleNextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
 
   const handleDateClick = (day) => {
     if (!day) return;
     setSelectedDate(day);
-    setNewEvent({ ...newEvent, date: day.date });
   };
 
-  const handleAddEvent = async () => {
-    if (!newEvent.title || !newEvent.date) return alert("กรุณากรอกข้อมูลให้ครบ");
-    
-    try {
-      await api.post("/custom-events/", {
-        title: newEvent.title,
-        date: newEvent.date,
-        event_type: newEvent.type,
-        notes: newEvent.notes,
-        is_shared: newEvent.is_shared,
-        priority: newEvent.priority
-      });
-      
-      loadData();
-      setShowAddModal(false);
-      setNewEvent({ title: "", date: "", type: "stock_order", notes: "", is_shared: true, priority: "medium" });
-    } catch (err) {
-      console.error("Add event error:", err);
-      alert("เกิดข้อผิดพลาด: " + (err.response?.data?.detail || err.message));
-    }
+  // ✅ เปิด AddCustomEventModal พร้อมวันที่ที่เลือก
+  const handleOpenAddModal = (date = "") => {
+    setAddModalDate(date);
+    setShowAddModal(true);
   };
 
   const handleDeleteEvent = async (event) => {
     if (!window.confirm("ต้องการลบบันทึกนี้?")) return;
-    
     try {
-      const eventId = event.dbId || event.id.replace('custom-', '');
+      const eventId = event.dbId || event.id.replace("custom-", "");
       await api.delete(`/custom-events/${eventId}/`);
       loadData();
     } catch (err) {
-      console.error("Delete event error:", err);
       alert("ไม่สามารถลบได้: " + (err.response?.data?.detail || err.message));
     }
   };
 
-  const monthNames = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
-  const dayNames = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
+  const monthNames = ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
+  const dayNames = ["อา","จ","อ","พ","พฤ","ศ","ส"];
 
-  // ✅ แยกวันหยุดที่ใกล้ถึง (เฉพาะ holidays/festivals) ไม่รวม custom events
-  const upcomingHolidays = useMemo(() => {
-    const today = new Date().toISOString().split("T")[0];
-    return allEvents
-      .filter((e) => e.date >= today && (e.isHoliday || e.isFestival) && !e.isCustom)
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .slice(0, 10);
-  }, [allEvents]);
-
-  // ✅ แก้ไข: บันทึกของฉันในเดือนที่กำลังดู (แทนที่จะเป็นงานที่ใกล้ถึง)
-  const currentMonthCustomEvents = useMemo(() => {
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    
-    const monthPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
-    
-    return allEvents
-      .filter((e) => e.isCustom && e.date.startsWith(monthPrefix))
-      .sort((a, b) => a.date.localeCompare(b.date));
-  }, [allEvents, currentDate]);
-
-  const holidaysByType = useMemo(() => {
-    const grouped = { selling_festival: [], national: [], buddhist: [], royal: [], observance: [] };
-    thaiHolidays.forEach((h) => {
-      if (grouped[h.type]) grouped[h.type].push(h);
-      else grouped.observance.push(h);
-    });
-    return grouped;
-  }, [thaiHolidays]);
-
-  if (loading) {
-    return (
-      <div className="p-8 text-center text-gray-500">
-        <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-        กำลังโหลด...
-      </div>
-    );
-  }
+  if (loading) return (
+    <div className="p-8 text-center text-gray-500">
+      <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+      กำลังโหลด...
+    </div>
+  );
 
   return (
     <div className="max-w-6xl mx-auto p-4 space-y-6">
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-3">
@@ -284,7 +213,8 @@ export default function AdminFestivalPage() {
             </p>
           </div>
         </div>
-        <button onClick={() => setShowAddModal(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors">
+        {/* ✅ ปุ่มเพิ่มงาน → เปิด AddCustomEventModal */}
+        <button onClick={() => handleOpenAddModal()} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
           </svg>
@@ -308,11 +238,8 @@ export default function AdminFestivalPage() {
           { key: "holidays", label: `วันหยุดไทย (${thaiHolidays.length})`, icon: "M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" },
           { key: "myevents", label: `บันทึกของฉัน (${customEvents.length})`, icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" }
         ].map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`flex items-center gap-2 px-4 py-2 font-medium text-sm border-b-2 whitespace-nowrap transition-colors ${activeTab === tab.key ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
-          >
+          <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+            className={`flex items-center gap-2 px-4 py-2 font-medium text-sm border-b-2 whitespace-nowrap transition-colors ${activeTab === tab.key ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={tab.icon} />
             </svg>
@@ -321,7 +248,7 @@ export default function AdminFestivalPage() {
         ))}
       </div>
 
-      {/* Calendar Tab */}
+      {/* Tab: ปฏิทิน */}
       {activeTab === "calendar" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 bg-white rounded-xl border shadow-sm overflow-hidden">
@@ -334,40 +261,26 @@ export default function AdminFestivalPage() {
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
               </button>
             </div>
-
             <div className="grid grid-cols-7 bg-gray-50 border-b">
               {dayNames.map((day, i) => (
                 <div key={day} className={`p-2 text-center text-sm font-medium ${i === 0 ? "text-red-500" : i === 6 ? "text-blue-500" : "text-gray-600"}`}>{day}</div>
               ))}
             </div>
-
             <div className="grid grid-cols-7">
               {calendarDays.map((day, i) => (
-                <div
-                  key={i}
-                  onClick={() => handleDateClick(day)}
+                <div key={i} onClick={() => handleDateClick(day)}
                   className={`min-h-[80px] p-1 border-b border-r border-gray-100 cursor-pointer transition-colors ${
-                    !day ? "bg-gray-50" :
-                    day.isToday ? "bg-blue-50" :
+                    !day ? "bg-gray-50" : day.isToday ? "bg-blue-50" :
                     selectedDate?.date === day?.date ? "bg-yellow-50" :
-                    day.hasHoliday ? "bg-red-50/50" :
-                    day.isWeekend ? "bg-gray-50/50" : "hover:bg-gray-50"
-                  }`}
-                >
+                    day.hasHoliday ? "bg-red-50/50" : day.isWeekend ? "bg-gray-50/50" : "hover:bg-gray-50"
+                  }`}>
                   {day && (
                     <>
-                      <div className={`text-sm font-medium mb-1 ${
-                        day.isToday ? "text-blue-600" :
-                        day.hasHoliday ? "text-red-600" :
-                        (i % 7 === 0) ? "text-red-500" :
-                        (i % 7 === 6) ? "text-blue-500" : "text-gray-700"
-                      }`}>{day.day}</div>
+                      <div className={`text-sm font-medium mb-1 ${day.isToday ? "text-blue-600" : day.hasHoliday ? "text-red-600" : (i % 7 === 0) ? "text-red-500" : (i % 7 === 6) ? "text-blue-500" : "text-gray-700"}`}>{day.day}</div>
                       <div className="space-y-0.5">
                         {day.events.slice(0, 2).map((event, ei) => (
                           <div key={ei} className={`text-xs px-1 py-0.5 rounded truncate border flex items-center gap-1 ${HOLIDAY_COLORS[event.type] || "bg-gray-100"}`} title={event.title}>
-                            {event.isCustom && event.priority && (
-                              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${PRIORITY_COLORS[event.priority]?.dot || 'bg-gray-400'}`}></span>
-                            )}
+                            {event.isCustom && event.priority && <span className={`w-2 h-2 rounded-full flex-shrink-0 ${PRIORITY_COLORS[event.priority]?.dot || "bg-gray-400"}`}></span>}
                             <span className="truncate">{event.title}</span>
                           </div>
                         ))}
@@ -384,10 +297,7 @@ export default function AdminFestivalPage() {
           <div className="space-y-4">
             {selectedDate && (
               <div className="bg-white rounded-xl border shadow-sm p-4">
-                <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
-                  <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
+                <h3 className="font-bold text-gray-800 mb-3">
                   {selectedDate.day} {monthNames[currentDate.getMonth()]} {currentDate.getFullYear() + 543}
                 </h3>
                 {selectedDate.events.length > 0 ? (
@@ -397,27 +307,14 @@ export default function AdminFestivalPage() {
                       return (
                         <div key={i} className={`p-3 rounded-lg border ${HOLIDAY_COLORS[event.type] || "bg-gray-50"}`}>
                           <div className="font-medium text-sm flex items-center gap-2">
-                            {event.isCustom && event.priority && (
-                              <span className={`w-3 h-3 rounded-full flex-shrink-0 ${PRIORITY_COLORS[event.priority]?.dot || 'bg-gray-400'}`} title={`ความสำคัญ: ${PRIORITY_COLORS[event.priority]?.label || '-'}`}></span>
-                            )}
+                            {event.isCustom && event.priority && <span className={`w-3 h-3 rounded-full flex-shrink-0 ${PRIORITY_COLORS[event.priority]?.dot || "bg-gray-400"}`}></span>}
                             {event.title}
                           </div>
-                          {event.isCustom && eventType && (
-                            <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                              <span>{eventType.emoji}</span>
-                              <span>{eventType.label}</span>
-                            </div>
-                          )}
+                          {event.isCustom && eventType && <div className="text-xs text-gray-500 mt-1">{eventType.emoji} {eventType.label}</div>}
                           {event.notes && <div className="text-xs opacity-75 mt-1">{event.notes}</div>}
-                          {/* ✅ เพิ่มปุ่มแก้ไข + ลบ สำหรับ custom events */}
                           {event.isCustom && (
                             <div className="flex items-center gap-2 mt-2">
-                              <button 
-                                onClick={() => setEditingEvent({ ...event, id: event.dbId || event.id?.toString().replace('custom-', '') })} 
-                                className="text-xs text-blue-500 hover:underline"
-                              >
-                                แก้ไข
-                              </button>
+                              <button onClick={() => setEditingEvent({ ...event, id: event.dbId || event.id?.toString().replace("custom-", "") })} className="text-xs text-blue-500 hover:underline">แก้ไข</button>
                               <button onClick={() => handleDeleteEvent(event)} className="text-xs text-red-500 hover:underline">ลบ</button>
                             </div>
                           )}
@@ -426,7 +323,8 @@ export default function AdminFestivalPage() {
                     })}
                   </div>
                 ) : <p className="text-sm text-gray-500">ไม่มีกิจกรรม</p>}
-                <button onClick={() => { setNewEvent({ ...newEvent, date: selectedDate.date }); setShowAddModal(true); }} className="w-full mt-3 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-lg flex items-center justify-center gap-1 transition-colors">
+                {/* ✅ ปุ่มเพิ่มบันทึกวันนี้ → เปิด AddCustomEventModal พร้อมวันที่ */}
+                <button onClick={() => handleOpenAddModal(selectedDate.date)} className="w-full mt-3 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-lg flex items-center justify-center gap-1 transition-colors">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                   </svg>
@@ -436,43 +334,24 @@ export default function AdminFestivalPage() {
             )}
 
             <div className="bg-white rounded-xl border shadow-sm p-4">
-              <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
-                <svg className="w-5 h-5 text-red-500" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
-                </svg>
-                วันหยุดที่ใกล้ถึง
-              </h3>
+              <h3 className="font-bold text-gray-800 mb-3">วันหยุดที่ใกล้ถึง</h3>
               {upcomingHolidays.length > 0 ? (
                 <div className="space-y-2 max-h-48 overflow-y-auto">
                   {upcomingHolidays.map((h, i) => (
                     <div key={i} className="flex items-center gap-2 text-sm">
-                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                        h.type === "selling_festival" ? "bg-pink-500" :
-                        h.type === "national" ? "bg-red-500" :
-                        h.type === "buddhist" ? "bg-orange-500" :
-                        h.type === "royal" ? "bg-yellow-500" :
-                        h.isFestival ? "bg-green-500" : "bg-gray-400"
-                      }`}></span>
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${h.type === "selling_festival" ? "bg-pink-500" : h.type === "national" ? "bg-red-500" : h.type === "buddhist" ? "bg-orange-500" : h.type === "royal" ? "bg-yellow-500" : h.isFestival ? "bg-green-500" : "bg-gray-400"}`}></span>
                       <span className="text-gray-500 w-16">{new Date(h.date).toLocaleDateString("th-TH", { day: "numeric", month: "short" })}</span>
-                      <span className={`text-gray-700 truncate ${h.type === "selling_festival" ? "font-medium text-pink-700" : ""}`}>
-                        {h.title}
-                      </span>
+                      <span className={`text-gray-700 truncate ${h.type === "selling_festival" ? "font-medium text-pink-700" : ""}`}>{h.title}</span>
                     </div>
                   ))}
                 </div>
               ) : <p className="text-sm text-gray-500">{loadingHolidays ? "กำลังโหลด..." : "ไม่มีวันหยุดที่ใกล้ถึง"}</p>}
             </div>
 
-            {/* ✅ บันทึกของฉันในเดือนนี้ — เพิ่มปุ่มแก้ไข */}
             <div className="bg-white rounded-xl border shadow-sm p-4">
-              <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
-                <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
+              <h3 className="font-bold text-gray-800 mb-3">
                 บันทึกของฉัน
-                <span className="text-xs font-normal text-gray-500">
-                  ({monthNames[currentDate.getMonth()]} {currentDate.getFullYear() + 543})
-                </span>
+                <span className="text-xs font-normal text-gray-500 ml-1">({monthNames[currentDate.getMonth()]} {currentDate.getFullYear() + 543})</span>
               </h3>
               {currentMonthCustomEvents.length > 0 ? (
                 <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -480,33 +359,17 @@ export default function AdminFestivalPage() {
                     const eventType = EVENT_TYPES.find((t) => t.value === e.event_type);
                     return (
                       <div key={i} className="flex items-center gap-2 text-sm p-2 rounded-lg hover:bg-gray-50 transition-colors group">
-                        <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${PRIORITY_COLORS[e.priority]?.dot || 'bg-blue-500'}`}></span>
+                        <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${PRIORITY_COLORS[e.priority]?.dot || "bg-blue-500"}`}></span>
                         <span className="text-gray-500 w-8 font-medium">{new Date(e.date).getDate()}</span>
                         <div className="flex-1 min-w-0">
                           <span className="text-gray-800 truncate block font-medium">{e.title}</span>
-                          {eventType && (
-                            <span className="text-xs text-gray-500">{eventType.emoji} {eventType.label}</span>
-                          )}
+                          {eventType && <span className="text-xs text-gray-500">{eventType.emoji} {eventType.label}</span>}
                         </div>
-                        {/* ✅ ปุ่มแก้ไข */}
-                        <button 
-                          onClick={() => setEditingEvent({ ...e, id: e.dbId || e.id?.toString().replace('custom-', '') })} 
-                          className="p-1 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded opacity-0 group-hover:opacity-100 transition-all"
-                          title="แก้ไข"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
+                        <button onClick={() => setEditingEvent({ ...e, id: e.dbId || e.id?.toString().replace("custom-", "") })} className="p-1 text-blue-400 hover:text-blue-600 rounded opacity-0 group-hover:opacity-100 transition-all" title="แก้ไข">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                         </button>
-                        {/* ปุ่มลบ */}
-                        <button 
-                          onClick={() => handleDeleteEvent({ dbId: e.dbId || e.id })} 
-                          className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded opacity-0 group-hover:opacity-100 transition-all"
-                          title="ลบ"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
+                        <button onClick={() => handleDeleteEvent({ dbId: e.dbId || e.id })} className="p-1 text-red-400 hover:text-red-600 rounded opacity-0 group-hover:opacity-100 transition-all" title="ลบ">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                         </button>
                       </div>
                     );
@@ -514,29 +377,17 @@ export default function AdminFestivalPage() {
                 </div>
               ) : (
                 <div className="text-center py-4">
-                  <svg className="w-10 h-10 mx-auto text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                  </svg>
                   <p className="text-sm text-gray-500">ไม่มีบันทึกในเดือนนี้</p>
-                  <button 
-                    onClick={() => setShowAddModal(true)} 
-                    className="mt-2 text-xs text-blue-600 hover:underline"
-                  >
-                    + เพิ่มบันทึก
-                  </button>
+                  {/* ✅ ปุ่มเพิ่มบันทึก → เปิด AddCustomEventModal */}
+                  <button onClick={() => handleOpenAddModal()} className="mt-2 text-xs text-blue-600 hover:underline">+ เพิ่มบันทึก</button>
                 </div>
               )}
             </div>
 
             <div className="bg-white rounded-xl border shadow-sm p-4">
-              <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
-                <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
-                </svg>
-                สัญลักษณ์
-              </h3>
+              <h3 className="font-bold text-gray-800 mb-3">สัญลักษณ์</h3>
               <div className="space-y-2 text-sm">
-                <div className="flex items-center gap-2"><span className="w-3 h-3 rounded bg-pink-500"></span><span className="font-medium">เทศกาลขายดี (เตรียมสินค้า!)</span></div>
+                <div className="flex items-center gap-2"><span className="w-3 h-3 rounded bg-pink-500"></span><span className="font-medium">เทศกาลขายดี</span></div>
                 <div className="flex items-center gap-2"><span className="w-3 h-3 rounded bg-red-400"></span><span>วันหยุดราชการ</span></div>
                 <div className="flex items-center gap-2"><span className="w-3 h-3 rounded bg-orange-400"></span><span>วันสำคัญทางพุทธศาสนา</span></div>
                 <div className="flex items-center gap-2"><span className="w-3 h-3 rounded bg-yellow-400"></span><span>วันเฉลิมพระชนมพรรษา</span></div>
@@ -547,63 +398,40 @@ export default function AdminFestivalPage() {
         </div>
       )}
 
-      {/* Holidays Tab */}
+      {/* Tab: วันหยุดไทย */}
       {activeTab === "holidays" && (
         <div className="space-y-6">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div className="bg-pink-50 rounded-xl p-4 border border-pink-200">
-              <div className="text-2xl font-bold text-pink-600">{holidaysByType.selling_festival.length}</div>
-              <div className="text-sm text-pink-700">เทศกาลขายดี</div>
-            </div>
-            <div className="bg-red-50 rounded-xl p-4 border border-red-100">
-              <div className="text-2xl font-bold text-red-600">{holidaysByType.national.length}</div>
-              <div className="text-sm text-red-700">วันหยุดราชการ</div>
-            </div>
-            <div className="bg-orange-50 rounded-xl p-4 border border-orange-100">
-              <div className="text-2xl font-bold text-orange-600">{holidaysByType.buddhist.length}</div>
-              <div className="text-sm text-orange-700">วันสำคัญทางพุทธ</div>
-            </div>
-            <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-100">
-              <div className="text-2xl font-bold text-yellow-600">{holidaysByType.royal.length}</div>
-              <div className="text-sm text-yellow-700">วันเฉลิมพระชนมพรรษา</div>
-            </div>
-            <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-              <div className="text-2xl font-bold text-gray-600">{holidaysByType.observance.length}</div>
-              <div className="text-sm text-gray-600">วันสำคัญอื่นๆ</div>
-            </div>
+            {[
+              { key: "selling_festival", label: "เทศกาลขายดี", bg: "bg-pink-50 border-pink-200", text: "text-pink-600", sub: "text-pink-700" },
+              { key: "national",         label: "วันหยุดราชการ", bg: "bg-red-50 border-red-100",   text: "text-red-600",  sub: "text-red-700"  },
+              { key: "buddhist",         label: "วันสำคัญทางพุทธ", bg: "bg-orange-50 border-orange-100", text: "text-orange-600", sub: "text-orange-700" },
+              { key: "royal",            label: "วันเฉลิมพระชนมพรรษา", bg: "bg-yellow-50 border-yellow-100", text: "text-yellow-600", sub: "text-yellow-700" },
+              { key: "observance",       label: "วันสำคัญอื่นๆ", bg: "bg-gray-50 border-gray-200", text: "text-gray-600", sub: "text-gray-600" },
+            ].map((t) => (
+              <div key={t.key} className={`rounded-xl p-4 border ${t.bg}`}>
+                <div className={`text-2xl font-bold ${t.text}`}>{holidaysByType[t.key]?.length || 0}</div>
+                <div className={`text-sm ${t.sub}`}>{t.label}</div>
+              </div>
+            ))}
           </div>
-
           <div className="flex items-center gap-4">
-            <span className="text-gray-600">ปี:</span>
-            <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear() - 1, 0, 1))} className="px-3 py-1 border rounded hover:bg-gray-50 transition-colors flex items-center gap-1">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-              {currentDate.getFullYear() - 1 + 543}
-            </button>
+            <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear() - 1, 0, 1))} className="px-3 py-1 border rounded hover:bg-gray-50">{currentDate.getFullYear() - 1 + 543}</button>
             <span className="font-bold text-lg">{currentDate.getFullYear() + 543}</span>
-            <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear() + 1, 0, 1))} className="px-3 py-1 border rounded hover:bg-gray-50 transition-colors flex items-center gap-1">
-              {currentDate.getFullYear() + 1 + 543}
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-            </button>
+            <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear() + 1, 0, 1))} className="px-3 py-1 border rounded hover:bg-gray-50">{currentDate.getFullYear() + 1 + 543}</button>
             {loadingHolidays && <div className="animate-spin w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>}
           </div>
-
           <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
             <div className="p-4 bg-gradient-to-r from-red-50 to-orange-50 border-b">
-              <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
-                </svg>
-                วันหยุดและวันสำคัญของไทย ปี {currentDate.getFullYear() + 543}
-              </h2>
+              <h2 className="text-lg font-bold text-gray-800">วันหยุดและวันสำคัญของไทย ปี {currentDate.getFullYear() + 543}</h2>
               <p className="text-sm text-gray-500">ข้อมูลจาก Google Calendar API • รวม {thaiHolidays.length} วัน</p>
             </div>
-            
             {thaiHolidays.length > 0 ? (
               <div className="divide-y divide-gray-100 max-h-[600px] overflow-y-auto">
                 {thaiHolidays.sort((a, b) => a.date.localeCompare(b.date)).map((h, i) => (
-                  <div key={i} className={`flex items-start p-4 hover:bg-gray-50 ${h.isHoliday ? "bg-red-50/30" : ""}`}>
+                  <div key={i} className="flex items-start p-4 hover:bg-gray-50">
                     <div className="w-20 text-center flex-shrink-0">
-                      <div className={`text-2xl font-bold ${h.isHoliday ? "text-red-600" : "text-gray-800"}`}>{new Date(h.date).getDate()}</div>
+                      <div className="text-2xl font-bold text-red-600">{new Date(h.date).getDate()}</div>
                       <div className="text-xs text-gray-500">{monthNames[new Date(h.date).getMonth()].slice(0, 3)}</div>
                     </div>
                     <div className="flex-1 ml-4">
@@ -618,38 +446,22 @@ export default function AdminFestivalPage() {
               </div>
             ) : (
               <div className="p-8 text-center text-gray-500">
-                {loadingHolidays ? (
-                  <>
-                    <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-                    กำลังโหลด...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <p>ไม่พบข้อมูลวันหยุด</p>
-                  </>
-                )}
+                {loadingHolidays ? <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div> : <p>ไม่พบข้อมูลวันหยุด</p>}
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* My Events Tab */}
+      {/* Tab: บันทึกของฉัน */}
       {activeTab === "myevents" && (
         <div className="space-y-4">
           {customEvents.length === 0 ? (
             <div className="bg-white rounded-xl border shadow-sm p-8 text-center">
-              <svg className="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
               <h3 className="font-medium text-gray-800 mb-2">ยังไม่มีบันทึก</h3>
               <p className="text-sm text-gray-500 mb-4">เพิ่มบันทึกเพื่อเตือนความจำวันสำคัญ</p>
-              <button onClick={() => setShowAddModal(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors">
-                + เพิ่มบันทึก
-              </button>
+              {/* ✅ ปุ่มเพิ่มบันทึก → เปิด AddCustomEventModal */}
+              <button onClick={() => handleOpenAddModal()} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">+ เพิ่มบันทึก</button>
             </div>
           ) : (
             <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
@@ -665,34 +477,17 @@ export default function AdminFestivalPage() {
                       </div>
                       <div className="flex-1 ml-4">
                         <div className="font-medium text-gray-800 flex items-center gap-2">
-                          {priorityInfo && (
-                            <span className={`w-3 h-3 rounded-full flex-shrink-0 ${priorityInfo.dot}`} title={`ความสำคัญ: ${priorityInfo.label}`}></span>
-                          )}
+                          {priorityInfo && <span className={`w-3 h-3 rounded-full flex-shrink-0 ${priorityInfo.dot}`}></span>}
                           {e.title}
                         </div>
                         {e.notes && <div className="text-sm text-gray-500">{e.notes}</div>}
-                        {e.is_shared && (
-                          <span className="text-xs text-green-600 flex items-center gap-1 mt-1">
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            แชร์ให้ทุกคน
-                          </span>
-                        )}
+                        {e.is_shared && <span className="text-xs text-green-600 mt-1 block">แชร์ให้ทุกคน</span>}
                       </div>
                       <div className={`px-3 py-1 rounded-full text-xs font-medium border flex items-center gap-1 ${eventType?.color || "bg-gray-100"}`}>
-                        <span>{eventType?.emoji}</span>
-                        <span>{eventType?.label || "อื่นๆ"}</span>
+                        <span>{eventType?.emoji}</span><span>{eventType?.label || "อื่นๆ"}</span>
                       </div>
-                      {/* ✅ เพิ่มปุ่มแก้ไขใน My Events Tab */}
-                      <button 
-                        onClick={() => setEditingEvent({ ...e, id: e.id })} 
-                        className="ml-2 p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
-                        title="แก้ไข"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
+                      <button onClick={() => setEditingEvent({ ...e, id: e.id })} className="ml-2 p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                       </button>
                       <button onClick={() => handleDeleteEvent({ dbId: e.id })} className="ml-1 p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -706,74 +501,15 @@ export default function AdminFestivalPage() {
         </div>
       )}
 
-      {/* Add Task Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="p-4 border-b flex items-center justify-between">
-              <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
-                เพิ่มงาน
-              </h2>
-              <button onClick={() => setShowAddModal(false)} className="p-1 hover:bg-gray-100 rounded-lg transition-colors">
-                <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <div className="p-4 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">ชื่องาน *</label>
-                <input type="text" value={newEvent.title} onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })} placeholder="เช่น เตรียมสต็อกวาเลนไทน์" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">วันที่ *</label>
-                <input type="date" value={newEvent.date} onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">ประเภทงาน</label>
-                <select value={newEvent.type} onChange={(e) => setNewEvent({ ...newEvent, type: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                  {EVENT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.emoji} {t.label}</option>)}
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">ระดับความสำคัญ</label>
-                <div className="grid grid-cols-4 gap-2">
-                  {[
-                    { value: 'low', label: 'ต่ำ', color: 'border-green-500 bg-green-50 text-green-700', dotColor: 'bg-green-500' },
-                    { value: 'medium', label: 'ปกติ', color: 'border-yellow-500 bg-yellow-50 text-yellow-700', dotColor: 'bg-yellow-500' },
-                    { value: 'high', label: 'สูง', color: 'border-red-500 bg-red-50 text-red-700', dotColor: 'bg-red-500' },
-                    { value: 'urgent', label: 'ด่วน', color: 'border-purple-500 bg-purple-50 text-purple-700', dotColor: 'bg-purple-500' },
-                  ].map((p) => (
-                    <button key={p.value} type="button" onClick={() => setNewEvent({ ...newEvent, priority: p.value })} className={`px-2 py-2 text-xs font-medium rounded-lg border-2 transition-all flex items-center justify-center gap-1.5 ${newEvent.priority === p.value ? p.color + ' ring-2 ring-offset-1' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>
-                      <span className={`w-3 h-3 rounded-full ${p.dotColor}`}></span>
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">รายละเอียด</label>
-                <textarea value={newEvent.notes} onChange={(e) => setNewEvent({ ...newEvent, notes: e.target.value })} placeholder="รายละเอียดงานที่ต้องทำ..." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-              </div>
-              <div className="flex items-center gap-2">
-                <input type="checkbox" id="is_shared" checked={newEvent.is_shared} onChange={(e) => setNewEvent({ ...newEvent, is_shared: e.target.checked })} className="w-4 h-4 text-blue-600 rounded" />
-                <label htmlFor="is_shared" className="text-sm text-gray-700">แชร์ให้ทุกคนเห็น (พนักงานเห็นด้วย)</label>
-              </div>
-            </div>
-            <div className="p-4 border-t flex gap-2 justify-end">
-              <button onClick={() => setShowAddModal(false)} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">ยกเลิก</button>
-              <button onClick={handleAddEvent} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">บันทึก</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ✅ AddCustomEventModal — แยกออกมาเป็น Component แล้ว */}
+      <AddCustomEventModal
+        open={showAddModal}
+        defaultDate={addModalDate}
+        onClose={() => setShowAddModal(false)}
+        onSaved={() => { setShowAddModal(false); loadData(); }}
+      />
 
-      {/* ✅ Edit Custom Event Modal */}
+      {/* EditCustomEventModal — เปิดเมื่อกดปุ่มแก้ไข */}
       {editingEvent && (
         <EditCustomEventModal
           event={editingEvent}

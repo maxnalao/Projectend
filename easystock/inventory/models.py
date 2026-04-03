@@ -1,4 +1,4 @@
-# backend/inventory/models.py (CLEANED VERSION - ลบโค้ดที่ไม่ใช้แล้ว)
+# backend/inventory/models.py (CLEANED VERSION - ลบ BestSeller ออกแล้ว)
 from django.db import models
 from django.conf import settings
 from django.db.models import Q
@@ -188,97 +188,7 @@ class Festival(models.Model):
         return None
 
 
-# ================ CLASS 7: BestSeller ================
-class BestSeller(models.Model):
-    """
-    บันทึกสินค้าขายดี/ยอดนิยมตามเทศกาล
-    """
-    product = models.ForeignKey(
-        Product,
-        on_delete=models.CASCADE,
-        related_name='best_sellers',
-        help_text="สินค้า"
-    )
-    festival = models.ForeignKey(
-        Festival,
-        on_delete=models.CASCADE,
-        related_name='best_sellers',
-        help_text="เทศกาล"
-    )
-    total_issued = models.IntegerField(
-        default=0,
-        help_text="จำนวนเบิกทั้งหมด"
-    )
-    percentage_increase = models.FloatField(
-        default=0.0,
-        help_text="เพิ่มขึ้นเปอร์เซ็นต์เมื่อเทียบกับ last_year"
-    )
-    last_year_count = models.IntegerField(
-        default=0,
-        help_text="จำนวนเบิกปีที่แล้ว"
-    )
-    this_year_count = models.IntegerField(
-        default=0,
-        help_text="จำนวนเบิกปีนี้"
-    )
-    rank = models.IntegerField(
-        default=0,
-        help_text="ลำดับที่ (1=ขายดีสุด)"
-    )
-    recorded_date = models.DateField(
-        auto_now_add=True,
-        help_text="วันที่บันทึก"
-    )
-    notes = models.TextField(
-        null=True,
-        blank=True,
-        help_text="หมายเหตุเพิ่มเติม"
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        unique_together = ('product', 'festival')
-        ordering = ['-rank', '-total_issued']
-        verbose_name = 'Best Seller'
-        verbose_name_plural = 'Best Sellers'
-        indexes = [
-            models.Index(fields=['festival', '-rank']),
-            models.Index(fields=['product', 'festival']),
-        ]
-
-    def __str__(self):
-        return f"{self.product.name} - {self.festival.name} (Rank: {self.rank})"
-
-    def save(self, *args, **kwargs):
-        if self.last_year_count > 0:
-            self.percentage_increase = (
-                (self.this_year_count - self.last_year_count) / 
-                self.last_year_count * 100
-            )
-        super().save(*args, **kwargs)
-
-    @property
-    def status(self):
-        if self.percentage_increase > 0:
-            return 'up'
-        elif self.percentage_increase < 0:
-            return 'down'
-        else:
-            return 'same'
-
-    @property
-    def status_display(self):
-        """แสดง status ด้วย emoji"""
-        if self.percentage_increase > 0:
-            return f"↑ +{self.percentage_increase:.1f}%"
-        elif self.percentage_increase < 0:
-            return f"↓ {self.percentage_increase:.1f}%"
-        else:
-            return "= 0%"
-
-
-# ================ CLASS 8: Task ================
+# ================ CLASS 7: Task ================
 class Task(models.Model):
     """
     Model สำหรับการมอบหมายงานให้พนักงาน
@@ -446,7 +356,7 @@ class Task(models.Model):
         super().save(*args, **kwargs)
 
 
-# ================ CLASS 9: CustomEvent ================
+# ================ CLASS 8: CustomEvent ================
 class CustomEvent(models.Model):
     """บันทึกของฉัน - เก็บในฐานข้อมูลแทน localStorage"""
     EVENT_TYPES = [
@@ -499,5 +409,3 @@ class CustomEvent(models.Model):
     def __str__(self):
         priority_display = self.get_priority_display()
         return f"[{priority_display}] {self.title} ({self.date})"
-    
-

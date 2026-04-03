@@ -3,97 +3,112 @@ import { useNavigate } from "react-router-dom";
 import api from "../api";
 
 export default function StockIssuePage() {
-  const [items, setItems] = useState([]);
-  const [q, setQ] = useState("");
-  const [cat, setCat] = useState("");
-  const [cats, setCats] = useState([]);
+  // ── State รายการสินค้าและการค้นหา ──────────────────────────
+  const [items, setItems] = useState([]);         // สินค้าทั้งหมดที่โหลดมาจาก API
+  const [q, setQ] = useState("");                 // คำค้นหาสินค้า
+  const [cat, setCat] = useState("");             // หมวดหมู่ที่เลือกกรอง
+  const [cats, setCats] = useState([]);           // รายการหมวดหมู่ทั้งหมดสำหรับ dropdown
 
-  const [basket, setBasket] = useState({});
-  const [loading, setLoading] = useState(false);
-  const [issuing, setIssuing] = useState(false);
+  const [basket, setBasket] = useState({});       // ตะกร้าเบิก เก็บเป็น {id: {product, qty}}
+  const [loading, setLoading] = useState(false);  // สถานะกำลังโหลดสินค้า
+  const [issuing, setIssuing] = useState(false);  // สถานะกำลังส่งคำขอเบิก
   const navigate = useNavigate();
 
+  // ── โหลดสินค้าตามคำค้นหาและหมวดหมู่ ──────────────────────
   const load = async () => {
     setLoading(true);
     try {
       const params = {};
-      if (q) params.search = q;
-      if (cat) params.category = cat;
-      const { data } = await api.get("/products/", { params });
-      const arr = Array.isArray(data) ? data : (data.results ?? []);
+      if (q) params.search = q;       // ถ้ามีคำค้นหา → ส่งเป็น query param
+      if (cat) params.category = cat; // ถ้าเลือกหมวดหมู่ → ส่งเป็น query param
+      const { data } = await api.get("/products/", { params }); // GET /products/?search=xxx&category=xxx
+      const arr = Array.isArray(data) ? data : (data.results ?? []); // รองรับทั้ง array และ paginated response
       setItems(arr);
     } finally {
       setLoading(false);
     }
   };
 
+  // ── โหลดหมวดหมู่ทั้งหมดสำหรับ dropdown ────────────────────
   const loadCats = async () => {
     try {
       const { data } = await api.get("/categories/");
       setCats(Array.isArray(data) ? data : (data.results ?? []));
     } catch {
-      setCats([]);
+      setCats([]); // ถ้าโหลดไม่ได้ → ใช้ array ว่าง
     }
   };
 
+  // โหลดหมวดหมู่ครั้งเดียวตอนเปิดหน้า
   useEffect(() => { loadCats(); }, []);
+
+  // โหลดสินค้าใหม่ทุกครั้งที่ค้นหาหรือเปลี่ยนหมวดหมู่ รอ 250ms ก่อนส่ง (debounce)
   useEffect(() => {
-    const t = setTimeout(load, 250);
-    return () => clearTimeout(t);
+    const t = setTimeout(load, 250); // รอ 250ms ลดการเรียก API ซ้ำขณะพิมพ์
+    return () => clearTimeout(t);    // ล้าง timer เดิมก่อนสร้างใหม่
   }, [q, cat]);
 
+  // ── กรองเฉพาะสินค้าที่มีสต็อก > 0 ────────────────────────
   const viewItems = useMemo(
-    () => items.filter(x => Number(x.stock) > 0),
+    () => items.filter(x => Number(x.stock) > 0), // ไม่แสดงสินค้าที่หมดสต็อก
     [items]
   );
 
+  // ── เพิ่มสินค้าเข้าตะกร้า ──────────────────────────────────
   const addToBasket = (p) => {
     setBasket((old) => {
-      if (old[p.id]) return old;
-      return { ...old, [p.id]: { product: p, qty: 1 } };
+      if (old[p.id]) return old; // มีอยู่แล้ว → ไม่เพิ่มซ้ำ
+      return { ...old, [p.id]: { product: p, qty: 1 } }; // เพิ่มใหม่ qty เริ่มต้นที่ 1
     });
   };
 
+  // ── ลบสินค้าออกจากตะกร้า ───────────────────────────────────
   const removeFromBasket = (id) => {
     setBasket((old) => {
       const c = { ...old };
-      delete c[id];
+      delete c[id]; // ลบ key ออกจาก object
       return c;
     });
   };
 
+  // ── ปรับจำนวนสินค้าในตะกร้า ────────────────────────────────
   const setQty = (id, qty) => {
     setBasket((old) => {
       const line = old[id];
       if (!line) return old;
       const max = Number(line.product.stock ?? 0);
-      const v = Math.max(1, Math.min(max, Number(qty) || 0));
+      const v = Math.max(1, Math.min(max, Number(qty) || 0)); // จำกัด 1 ≤ qty ≤ stock
       return { ...old, [id]: { ...line, qty: v } };
     });
   };
 
-  const lines = Object.values(basket);
-  const canSubmit = lines.length > 0 && lines.every(l => l.qty > 0 && l.qty <= l.product.stock);
+  const lines = Object.values(basket); // แปลง basket object เป็น array สำหรับ render
+
+  // เช็คว่าสามารถกดยืนยันเบิกได้หรือไม่
+  const canSubmit = lines.length > 0 && // มีสินค้าในตะกร้าอย่างน้อย 1 รายการ
+    lines.every(l => l.qty > 0 && l.qty <= l.product.stock); // ทุกรายการ qty ถูกต้อง
+
+  // รวมจำนวนสินค้าทั้งหมดในตะกร้า
   const totalItems = useMemo(() => {
     return lines.reduce((sum, l) => sum + Number(l.qty), 0);
   }, [lines]);
 
+  // ── ส่งคำขอเบิกสินค้า ──────────────────────────────────────
   const submit = async () => {
-    if (!canSubmit || issuing) return;
+    if (!canSubmit || issuing) return; // ป้องกันกดซ้ำหรือกดขณะยังไม่พร้อม
     setIssuing(true);
     try {
       const payload = {
-        items: lines.map(l => ({ product: l.product.id, qty: l.qty })),
+        items: lines.map(l => ({ product: l.product.id, qty: l.qty })), // สร้าง payload รายการสินค้า
       };
-
-      await api.post("/issue-products/", payload);
+      await api.post("/issue-products/", payload); // POST /issue-products/ → สร้าง Issue + IssueLine + หักสต็อก
       alert("เบิกสินค้าเรียบร้อย!");
-      navigate("/products", { replace: true });
+      navigate("/products", { replace: true }); // redirect ไปหน้าสินค้าหลังเบิกสำเร็จ
     } catch (err) {
       console.error("issue error:", err?.response || err);
       const status = err?.response?.status;
       const data = err?.response?.data;
-      alert(`เบิกสินค้าไม่สำเร็จ (${status ?? "ERR"}) ${data ? JSON.stringify(data) : ""}`);
+      alert(`เบิกสินค้าไม่สำเร็จ (${status ?? "ERR"}) ${data ? JSON.stringify(data) : ""}`); // แสดง error
     } finally {
       setIssuing(false);
     }
@@ -101,9 +116,10 @@ export default function StockIssuePage() {
 
   return (
     <section className="space-y-6">
-      {/* Header */}
+      {/* ── Header ── ชื่อหน้า + ปุ่มย้อนกลับ + ปุ่มยืนยันเบิก */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
+          {/* ปุ่มย้อนกลับไปหน้า StockPage */}
           <button
             onClick={() => navigate("/stock")}
             className="w-10 h-10 bg-white border rounded-lg flex items-center justify-center hover:bg-gray-50 transition-colors"
@@ -118,12 +134,14 @@ export default function StockIssuePage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {/* แสดงจำนวนรายการที่เลือกแล้ว */}
           <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg font-medium text-sm">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
             เลือกแล้ว: <span className="font-bold">{lines.length}</span> รายการ
           </div>
+          {/* ปุ่มยืนยันเบิก — สีเทาถ้า canSubmit=false / สีแดงถ้ากดได้ */}
           <button
             onClick={submit}
             disabled={!canSubmit || issuing}
@@ -151,10 +169,11 @@ export default function StockIssuePage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left: Product List (2 columns) */}
+
+        {/* ── ฝั่งซ้าย — ตารางสินค้า (2/3 ของหน้า) ── */}
         <div className="lg:col-span-2">
           <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-            {/* Search */}
+            {/* ช่องค้นหา + dropdown หมวดหมู่ */}
             <div className="px-6 py-5 border-b bg-gradient-to-r from-slate-50 to-gray-50">
               <div className="flex items-center gap-3 mb-3">
                 <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -163,21 +182,23 @@ export default function StockIssuePage() {
                 <h2 className="text-base font-semibold text-gray-800">สินค้าในสต็อก</h2>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {/* ช่องค้นหา — เมื่อพิมพ์จะ trigger useEffect → load() หลัง 250ms */}
                 <div className="relative md:col-span-2">
                   <svg className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
                   <input
                     value={q}
-                    onChange={(e) => setQ(e.target.value)}
+                    onChange={(e) => setQ(e.target.value)} // อัปเดต q → trigger load()
                     placeholder="ค้นหารหัส หรือ ชื่อสินค้า..."
                     className="w-full border border-gray-300 rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
                   />
                 </div>
+                {/* dropdown หมวดหมู่ — เมื่อเลือกจะ trigger useEffect → load() */}
                 <select
                   className="border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
                   value={cat}
-                  onChange={(e) => setCat(e.target.value)}
+                  onChange={(e) => setCat(e.target.value)} // อัปเดต cat → trigger load()
                 >
                   <option value="">ทุกหมวดหมู่</option>
                   {cats.map((c) => (
@@ -187,7 +208,7 @@ export default function StockIssuePage() {
               </div>
             </div>
 
-            {/* Table */}
+            {/* ตารางแสดงสินค้า */}
             <div className="overflow-x-auto" style={{ maxHeight: "600px", overflowY: "auto" }}>
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 border-b sticky top-0 z-10">
@@ -202,6 +223,7 @@ export default function StockIssuePage() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {loading ? (
+                    // แสดง loading spinner ขณะโหลดข้อมูล
                     <tr>
                       <td colSpan={6} className="px-4 py-16 text-center">
                         <div className="flex flex-col items-center justify-center gap-3">
@@ -211,6 +233,7 @@ export default function StockIssuePage() {
                       </td>
                     </tr>
                   ) : viewItems.length === 0 ? (
+                    // แสดงข้อความเมื่อไม่พบสินค้า
                     <tr>
                       <td colSpan={6} className="px-4 py-16 text-center">
                         <div className="flex flex-col items-center justify-center gap-3">
@@ -227,8 +250,9 @@ export default function StockIssuePage() {
                       </td>
                     </tr>
                   ) : (
+                    // แสดงรายการสินค้าแต่ละแถว
                     viewItems.map((p) => {
-                      const isSelected = !!basket[p.id];
+                      const isSelected = !!basket[p.id]; // เช็คว่าเลือกอยู่ในตะกร้าแล้วหรือยัง
                       const stock = Number(p.stock);
                       return (
                         <tr key={p.id} className={`hover:bg-slate-50 transition-colors ${isSelected ? 'bg-blue-50' : ''}`}>
@@ -244,17 +268,17 @@ export default function StockIssuePage() {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-center">
-                            <span className={`text-lg font-bold ${
-                              stock < 5 ? 'text-amber-600' : 'text-emerald-600'
-                            }`}>
+                            {/* สีเหลืองถ้าสต็อกน้อยกว่า 5 / สีเขียวถ้าปกติ */}
+                            <span className={`text-lg font-bold ${stock < 5 ? 'text-amber-600' : 'text-emerald-600'}`}>
                               {stock}
                             </span>
                           </td>
                           <td className="px-4 py-3 text-center text-gray-600">{p.unit}</td>
                           <td className="px-4 py-3 text-center">
+                            {/* ปุ่มเลือก — disabled และสีเทาถ้าเลือกแล้ว */}
                             <button
                               disabled={isSelected}
-                              onClick={() => addToBasket(p)}
+                              onClick={() => addToBasket(p)} // เพิ่มเข้าตะกร้า
                               className={`px-4 py-1.5 text-sm rounded-lg font-medium transition-colors ${
                                 isSelected
                                   ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
@@ -274,9 +298,10 @@ export default function StockIssuePage() {
           </div>
         </div>
 
-        {/* Right: Cart (1 column) */}
+        {/* ── ฝั่งขวา — ตะกร้าเบิก (1/3 ของหน้า) ── */}
         <div className="lg:col-span-1">
           <div className="bg-white rounded-xl border shadow-sm overflow-hidden sticky top-6">
+            {/* Header ตะกร้า + ปุ่มล้างทั้งหมด */}
             <div className="px-6 py-4 border-b bg-gradient-to-r from-rose-50 to-pink-50">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -290,9 +315,10 @@ export default function StockIssuePage() {
                     <p className="text-xs text-gray-500">{lines.length} รายการ</p>
                   </div>
                 </div>
+                {/* ปุ่มล้างตะกร้าทั้งหมด */}
                 {lines.length > 0 && (
                   <button
-                    onClick={() => setBasket({})}
+                    onClick={() => setBasket({})} // ล้าง basket ทั้งหมด
                     className="text-xs text-rose-600 hover:text-rose-700 font-medium"
                   >
                     ล้างทั้งหมด
@@ -303,6 +329,7 @@ export default function StockIssuePage() {
 
             <div className="p-4" style={{ maxHeight: "500px", overflowY: "auto" }}>
               {lines.length === 0 ? (
+                // แสดงข้อความเมื่อตะกร้าว่าง
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
                     <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -313,18 +340,20 @@ export default function StockIssuePage() {
                   <p className="text-sm text-gray-400 mt-1">เลือกสินค้าจากรายการด้านซ้าย</p>
                 </div>
               ) : (
+                // แสดงรายการสินค้าในตะกร้า
                 <div className="space-y-3">
                   {lines.map((l) => {
-                    const isValid = l.qty > 0 && l.qty <= l.product.stock;
+                    const isValid = l.qty > 0 && l.qty <= l.product.stock; // เช็ค qty ถูกต้องหรือไม่
                     return (
                       <div key={l.product.id} className={`p-3 rounded-lg border-2 transition-colors ${
-                        isValid ? 'border-gray-200 bg-white' : 'border-red-200 bg-red-50'
+                        isValid ? 'border-gray-200 bg-white' : 'border-red-200 bg-red-50' // สีแดงถ้า qty ไม่ถูกต้อง
                       }`}>
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex-1">
                             <p className="font-semibold text-gray-800 text-sm">{l.product.name}</p>
                             <p className="text-xs text-gray-500">รหัส: {l.product.code}</p>
                           </div>
+                          {/* ปุ่ม X ลบออกจากตะกร้า */}
                           <button
                             onClick={() => removeFromBasket(l.product.id)}
                             className="text-rose-600 hover:text-rose-700 p-1"
@@ -339,6 +368,7 @@ export default function StockIssuePage() {
                           <div className="flex-1">
                             <label className="text-xs text-gray-600 block mb-1">จำนวน</label>
                             <div className="flex items-center gap-2">
+                              {/* ปุ่ม - ลดจำนวน */}
                               <button
                                 onClick={() => setQty(l.product.id, l.qty - 1)}
                                 className="w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center justify-center transition-colors"
@@ -347,6 +377,7 @@ export default function StockIssuePage() {
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
                                 </svg>
                               </button>
+                              {/* input กรอกจำนวนโดยตรง */}
                               <input
                                 type="number"
                                 min={1}
@@ -357,6 +388,7 @@ export default function StockIssuePage() {
                                   isValid ? 'border-gray-300' : 'border-red-300 bg-red-50'
                                 }`}
                               />
+                              {/* ปุ่ม + เพิ่มจำนวน */}
                               <button
                                 onClick={() => setQty(l.product.id, l.qty + 1)}
                                 className="w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center justify-center transition-colors"
@@ -367,6 +399,7 @@ export default function StockIssuePage() {
                               </button>
                             </div>
                           </div>
+                          {/* แสดงสต็อกคงเหลือ */}
                           <div className="text-right">
                             <p className="text-xs text-gray-500 mb-1">คงเหลือ</p>
                             <p className={`text-lg font-bold ${
@@ -377,6 +410,7 @@ export default function StockIssuePage() {
                           </div>
                         </div>
 
+                        {/* แสดง error ถ้า qty ไม่ถูกต้อง */}
                         {!isValid && (
                           <p className="text-xs text-red-600 mt-2">
                             ⚠️ จำนวนไม่ถูกต้อง (ต้อง 1-{l.product.stock})
@@ -389,12 +423,14 @@ export default function StockIssuePage() {
               )}
             </div>
 
+            {/* สรุปรวมและปุ่มยืนยันเบิกด้านล่างตะกร้า */}
             {lines.length > 0 && (
               <div className="px-6 py-4 border-t bg-gray-50">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm text-gray-600">รวมทั้งหมด</span>
                   <span className="text-2xl font-bold text-gray-800">{totalItems}</span>
                 </div>
+                {/* ปุ่มยืนยันเบิกด้านล่าง — เหมือนปุ่ม Header */}
                 <button
                   onClick={submit}
                   disabled={!canSubmit || issuing}
@@ -422,6 +458,7 @@ export default function StockIssuePage() {
             )}
           </div>
         </div>
+
       </div>
     </section>
   );

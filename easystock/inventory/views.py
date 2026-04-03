@@ -1,3 +1,4 @@
+# inventory/views.py (CLEANED VERSION - ลบ BestSeller ออกแล้ว)
 
 from rest_framework import viewsets, status
 from rest_framework.viewsets import ReadOnlyModelViewSet
@@ -22,13 +23,12 @@ User = get_user_model()
 
 from .models import (
     Product, Category, Issue, IssueLine, Listing,
-    Festival, BestSeller, Task, CustomEvent
+    Festival, Task, CustomEvent
 )
 
 from .serializers import (
     ProductSerializer, CategorySerializer, ListingSerializer,
-    FestivalSerializer, BestSellerSerializer, BestSellerDetailSerializer,
-    FestivalWithBestSellersSerializer, TaskSerializer, UserSerializer,
+    FestivalSerializer, TaskSerializer, UserSerializer,
     CustomEventSerializer
 )
 
@@ -110,8 +110,21 @@ class ProductViewSet(viewsets.ModelViewSet):
             else:
                 qs = qs.filter(category__name=cat)
         return qs.order_by("-id")
+    
+    def get_object(self):
+        if self.request.method in ('DELETE', 'PATCH', 'PUT'):
+            pk = self.kwargs.get('pk')
+            try:
+                product = Product.objects.get(pk=pk, is_deleted=False)
+                self.check_object_permissions(self.request, product)
+                return product
+            except Product.DoesNotExist:
+                from rest_framework.exceptions import NotFound
+                raise NotFound("ไม่พบสินค้านี้")
+        return super().get_object()
 
     def create(self, request, *args, **kwargs):
+
         response = super().create(request, *args, **kwargs)
         
         if response.status_code != 201:
@@ -207,10 +220,32 @@ class ProductViewSet(viewsets.ModelViewSet):
         return response
 
     def destroy(self, request, *args, **kwargs):
-        return Response(
-            {"detail": "ไม่อนุญาตให้ลบสินค้าในคลังผ่านหน้านี้"}, 
-            status=status.HTTP_405_METHOD_NOT_ALLOWED
-        )
+        if not request.user.is_superuser:
+            return Response(
+                {"detail": "คุณไม่มีสิทธิ์ลบสินค้า"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        product = self.get_object()
+        
+        if product.stock > 0:
+            return Response(
+                {"detail": "ไม่สามารถลบสินค้าที่ยังมีสต็อกอยู่"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # ลบ Listing ที่เชื่อมอยู่ (ถ้ามี)
+        try:
+            product.listing.delete()
+        except Exception:
+            pass
+        
+        # ลบ IssueLine ที่อ้างอิงสินค้านี้
+        IssueLine.objects.filter(product=product).delete()
+        
+        # ลบสินค้า
+        product.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 # ==================== CATEGORY VIEWSET ====================
@@ -351,6 +386,374 @@ class TaskViewSet(viewsets.ModelViewSet):
                 status=400
             )
 
+class EmployeeDashboardViewSet(viewsets.ModelViewSet):
+    """
+    แดชบอร์ดสำหรับพนักงาน
+    """
+    permission_classes = [IsEmployee]
+    http_method_names = ['get']
+    queryset = Product.objects.none()
+
+    @action(detail=False, methods=['get'])
+    def overview(self, request):
+        from zoneinfo import ZoneInfo
+        from datetime import time
+        
+        bangkok_tz = ZoneInfo('Asia/Bangkok')
+        now = timezone.now().astimezone(bangkok_tz)
+        today = now.date()
+        start = datetime.combine(today, time.min, tzinfo=bangkok_tz)
+        end = datetime.combine(today, time.max, tzinfo=bangkok_tz)
+        
+        total_products = Product.objects.filter(is_deleted=False).count()
+        
+        low_stock = Product.objects.filter(
+            is_deleted=False, stock__gt=0, stock__lt=5
+        ).values('id', 'code', 'name', 'stock', 'unit').order_by('stock')[:10]
+        
+        today_issued = IssueLine.objects.filter(
+            issue__created_at__gte=start,
+            issue__created_at__lte=end
+        ).aggregate(total_qty=Sum('qty'), total_items=Count('id'))
+        
+        upcoming_festivals = Festival.objects.filter(
+            start_date__gte=today
+        ).order_by('start_date')[:5].values('id', 'name', 'icon', 'start_date')
+        
+        top_products_today = IssueLine.objects.filter(
+            issue__created_at__gte=start,
+            issue__created_at__lte=end
+        ).values(
+            'product__id', 'product__code', 'product__name'
+        ).annotate(qty=Sum('qty')).order_by('-qty')[:5]
+        
+        return Response({
+            'total_products': total_products,
+            'low_stock_count': low_stock.count(),
+            'low_stock_items': list(low_stock),
+            'today_sales': {
+                'total_quantity': today_issued['total_qty'] or 0,
+                'total_transactions': today_issued['total_items'] or 0,
+            },
+            'upcoming_festivals': list(upcoming_festivals),
+            'top_products_today': list(top_products_today)
+        })
+
+
+class AdminDashboardViewSet(viewsets.ModelViewSet):
+    """
+    แดชบอร์ดสำหรับ Admin
+    """
+    permission_classes = [IsAdmin]
+    http_method_names = ['get']
+    queryset = Product.objects.none()
+
+    @action(detail=False, methods=['get'])
+    def overview(self, request):
+        """
+        ✅ ย้ายมาจาก dashboard_stats function
+        รวมข้อมูลทั้งหมดที่ OverviewPage ต้องการ
+        """
+        from zoneinfo import ZoneInfo
+        from datetime import time
+
+        bangkok_tz = ZoneInfo('Asia/Bangkok')
+        now = timezone.now().astimezone(bangkok_tz)
+        today = now.date()
+        start = datetime.combine(today, time.min, tzinfo=bangkok_tz)
+        end = datetime.combine(today, time.max, tzinfo=bangkok_tz)
+
+        products = Product.objects.filter(is_deleted=False)
+        total_stock = products.aggregate(total=Sum("stock"))["total"] or 0
+
+        low_qs = Product.objects.filter(
+            is_deleted=False, stock__gt=0, stock__lt=5
+        )
+
+        in_today = Product.objects.filter(
+            is_deleted=False,
+            created_at__gte=start,
+            created_at__lte=end
+        ).count()
+
+        out_today = IssueLine.objects.filter(
+            issue__created_at__gte=start,
+            issue__created_at__lte=end
+        ).aggregate(total=Sum("qty"))["total"] or 0
+
+        # คำนวณมูลค่าสินค้าคงคลัง
+        total_inventory_value = sum(
+            float(p.selling_price or 0) * p.stock
+            for p in products
+        )
+
+        # สินค้าใกล้หมด
+        low_items = []
+        for p in low_qs.order_by("stock")[:10]:
+            img = request.build_absolute_uri(p.image.url) if p.image else None
+            low_items.append({
+                "id": p.id,
+                "code": p.code,
+                "name": p.name,
+                "stock": p.stock,
+                "unit": p.unit,
+                "image_url": img
+            })
+
+        # การเคลื่อนไหวสินค้าวันนี้
+        all_mv = []
+        issued = IssueLine.objects.select_related(
+            "issue", "product"
+        ).filter(
+            issue__created_at__gte=start,
+            issue__created_at__lte=end
+        )
+        for l in issued:
+            all_mv.append({
+                'datetime': l.issue.created_at,
+                'id': f'out_{l.id}',
+                'date': l.issue.created_at.isoformat(),
+                'code': l.product.code,
+                'name': l.product.name,
+                'type': 'out',
+                'qty': l.qty
+            })
+
+        received = Product.objects.filter(
+            is_deleted=False,
+            created_at__gte=start,
+            created_at__lte=end
+        )
+        for p in received:
+            all_mv.append({
+                'datetime': p.created_at,
+                'id': f'in_{p.id}',
+                'date': p.created_at.isoformat(),
+                'code': p.code,
+                'name': p.name,
+                'type': 'in',
+                'qty': p.initial_stock or p.stock
+            })
+
+        all_mv.sort(key=lambda x: x['datetime'], reverse=True)
+        movements = [
+            {
+                'id': m['id'],
+                'date': m['date'],
+                'code': m['code'],
+                'name': m['name'],
+                'type': m['type'],
+                'qty': m['qty']
+            }
+            for m in all_mv[:20]
+        ]
+
+        # สถิติตามหมวดหมู่
+        cats = Product.objects.filter(is_deleted=False).values(
+            'category__name'
+        ).annotate(
+            count=Count('id'),
+            total_stock=Sum('stock')
+        ).order_by('-count')
+
+        cat_list = [
+            {
+                'category': c['category__name'] or 'ไม่ระบุ',
+                'count': c['count'],
+                'total_stock': c['total_stock'] or 0
+            }
+            for c in cats
+        ]
+
+        return Response({
+            "total_products": total_stock,
+            "low_stock_count": low_qs.count(),
+            "in_today": in_today,
+            "out_today": out_today,
+            "total_inventory_value": round(total_inventory_value, 2),
+            "low_stock_items": low_items,
+            "movements": movements,
+            "category_stats": cat_list
+        })
+
+    @action(detail=False, methods=['get'])
+    def financial(self, request):
+        """ข้อมูลการเงิน"""
+        products = Product.objects.filter(is_deleted=False)
+        total_selling_value = sum(
+            float(p.selling_price or 0) * p.stock
+            for p in products
+        )
+        return Response({
+            'total_selling_value': total_selling_value,
+            'total_products': products.count(),
+            'total_stock_items': (
+                products.aggregate(Sum('stock'))['stock__sum'] or 0
+            )
+        })
+
+    @action(detail=False, methods=['get'])
+    def category_breakdown(self, request):
+        """สถิติตามหมวดหมู่"""
+        categories = Category.objects.annotate(
+            product_count=Count('product'),
+            total_stock=Sum('product__stock')
+        ).values('id', 'name', 'product_count', 'total_stock')
+        return Response({'categories': list(categories)})
+
+    @action(detail=False, methods=['get'])
+    def top_products(self, request):
+        """สินค้าขายดี"""
+        top_products_data = Product.objects.filter(
+            is_deleted=False, stock__gt=0
+        ).annotate(
+            inventory_value=F('stock') * F('selling_price')
+        ).values(
+            'id', 'code', 'name', 'stock',
+            'selling_price', 'category__name'
+        ).order_by('-inventory_value')[:20]
+        return Response({'top_products': list(top_products_data)})
+
+
+# ==================== CUSTOM EVENT VIEWSET ====================
+
+class CustomEventViewSet(viewsets.ModelViewSet):
+    """
+    ระบบจัดการบันทึกส่วนตัว
+    """
+    serializer_class = CustomEventSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        user = self.request.user
+        return CustomEvent.objects.filter(
+            Q(created_by=user) | Q(is_shared=True)
+        ).distinct()
+    
+    def perform_create(self, serializer):
+        user = self.request.user
+        if user.is_superuser or user.is_staff:
+            serializer.save(created_by=user, is_shared=True)
+        else:
+            serializer.save(created_by=user)
+    
+    def perform_update(self, serializer):
+        instance = self.get_object()
+        if (instance.created_by != self.request.user and 
+            not self.request.user.is_staff):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("คุณไม่มีสิทธิ์แก้ไขรายการนี้")
+        serializer.save()
+    
+    def perform_destroy(self, instance):
+        if (instance.created_by != self.request.user and 
+            not self.request.user.is_staff):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("คุณไม่มีสิทธิ์ลบรายการนี้")
+        instance.delete()
+    
+    @action(detail=False, methods=['get'])
+    def my_events(self, request):
+        queryset = CustomEvent.objects.filter(created_by=request.user)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def calendar(self, request):
+        year = request.query_params.get('year')
+        month = request.query_params.get('month')
+        queryset = self.get_queryset()
+        if year:
+            queryset = queryset.filter(date__year=year)
+        if month:
+            queryset = queryset.filter(date__month=month)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            'year': year,
+            'month': month,
+            'events': serializer.data,
+            'count': queryset.count()
+        })
+    
+    @action(detail=False, methods=['get'])
+    def upcoming(self, request):
+        today = timezone.now().date()
+        queryset = self.get_queryset().filter(date__gte=today).order_by('date')[:10]
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def upcoming_shared(self, request):
+        today = timezone.now().date()
+        queryset = CustomEvent.objects.filter(
+            is_shared=True, date__gte=today 
+        ).select_related('created_by').order_by('date')[:10]
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
+class FestivalViewSet(viewsets.ModelViewSet):
+    """
+    จัดการเทศกาล
+    """
+    queryset = Festival.objects.all()
+    serializer_class = FestivalSerializer
+    permission_classes = [IsAuthenticated]
+
+    @action(detail=False, methods=['get'])
+    def upcoming(self, request):
+        today = timezone.now().date()
+        next_days = today + timedelta(days=60)
+
+        festivals = Festival.objects.filter(
+            start_date__gte=today,
+            start_date__lte=next_days
+        ).order_by('start_date')
+
+        serializer = self.get_serializer(festivals, many=True)
+        return Response({
+            'count': festivals.count(),
+            'today': today,
+            'results': serializer.data
+        })
+
+    @action(detail=False, methods=['get'])
+    def calendar(self, request):
+        year = int(request.query_params.get('year', timezone.now().year))
+        month = int(request.query_params.get('month', timezone.now().month))
+
+        if month < 1 or month > 12:
+            return Response(
+                {'error': 'Month must be between 1 and 12'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        first_day = datetime(year, month, 1).date()
+        if month == 12:
+            last_day = (
+                datetime(year + 1, 1, 1).date() - 
+                timedelta(days=1)
+            )
+        else:
+            last_day = (
+                datetime(year, month + 1, 1).date() - 
+                timedelta(days=1)
+            )
+
+        festivals = Festival.objects.filter(
+            start_date__lte=last_day,
+            end_date__gte=first_day
+        ).order_by('start_date')
+
+        serializer = self.get_serializer(festivals, many=True)
+        
+        return Response({
+            'year': year,
+            'month': month,
+            'month_name': first_day.strftime('%B'),
+            'festivals': serializer.data,
+            'count': festivals.count()
+        })
+    
 # ==================== API FUNCTIONS ====================
 
 @api_view(["POST"])
@@ -482,133 +885,6 @@ def product_unlist(request, pk: int):
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def dashboard_stats(request):
-    """
-    สถิติแดชบอร์ด
-    """
-    from zoneinfo import ZoneInfo
-    from datetime import time
-    
-    bangkok_tz = ZoneInfo('Asia/Bangkok')
-    now = timezone.now().astimezone(bangkok_tz)
-    today = now.date()
-    start = datetime.combine(today, time.min, tzinfo=bangkok_tz)
-    end = datetime.combine(today, time.max, tzinfo=bangkok_tz)
-
-    products = Product.objects.filter(is_deleted=False)
-    total_stock = products.aggregate(total=Sum("stock"))["total"] or 0
-    
-    low_qs = Product.objects.filter(
-        is_deleted=False, stock__gt=0, stock__lt=5
-    )
-    in_today = Product.objects.filter(
-        is_deleted=False, 
-        created_at__gte=start, 
-        created_at__lte=end
-    ).count()
-    out_today = IssueLine.objects.filter(
-        issue__created_at__gte=start, 
-        issue__created_at__lte=end
-    ).aggregate(total=Sum("qty"))["total"] or 0
-
-    total_inventory_value = 0
-    for p in products:
-        price = float(p.selling_price) if p.selling_price else 0
-        total_inventory_value += price * p.stock
-
-    low_items = []
-    for p in low_qs.order_by("stock")[:10]:
-        img = (
-            request.build_absolute_uri(p.image.url) 
-            if p.image 
-            else None
-        )
-        low_items.append({
-            "id": p.id, 
-            "code": p.code, 
-            "name": p.name, 
-            "stock": p.stock, 
-            "unit": p.unit, 
-            "image_url": img
-        })
-
-    all_mv = []
-    issued = IssueLine.objects.select_related(
-        "issue", "product"
-    ).filter(
-        issue__created_at__gte=start, 
-        issue__created_at__lte=end
-    )
-    for l in issued:
-        all_mv.append({
-            'datetime': l.issue.created_at, 
-            'id': f'out_{l.id}', 
-            'date': l.issue.created_at.isoformat(), 
-            'code': l.product.code, 
-            'name': l.product.name, 
-            'type': 'out', 
-            'qty': l.qty
-        })
-    
-    received = Product.objects.filter(
-        is_deleted=False, 
-        created_at__gte=start, 
-        created_at__lte=end
-    )
-    for p in received:
-        all_mv.append({
-            'datetime': p.created_at, 
-            'id': f'in_{p.id}', 
-            'date': p.created_at.isoformat(), 
-            'code': p.code, 
-            'name': p.name, 
-            'type': 'in', 
-            'qty': p.initial_stock or p.stock
-        })
-    
-    all_mv.sort(key=lambda x: x['datetime'], reverse=True)
-    movements = [
-        {
-            'id': m['id'], 
-            'date': m['date'], 
-            'code': m['code'], 
-            'name': m['name'], 
-            'type': m['type'], 
-            'qty': m['qty']
-        } 
-        for m in all_mv[:20]
-    ]
-
-    cats = Product.objects.filter(is_deleted=False).values(
-        'category__name'
-    ).annotate(
-        count=Count('id'), 
-        total_stock=Sum('stock')
-    ).order_by('-count')
-    
-    cat_list = [
-        {
-            'category': c['category__name'] or 'ไม่ระบุ', 
-            'count': c['count'], 
-            'total_stock': c['total_stock'] or 0
-        } 
-        for c in cats
-    ]
-
-    return Response({
-        "total_products": total_stock,
-        "low_stock_count": low_qs.count(),
-        "in_today": in_today, 
-        "out_today": out_today,
-        "total_inventory_value": round(total_inventory_value, 2),
-        "low_stock_items": low_items, 
-        "movements": movements, 
-        "category_stats": cat_list
-    })
-
-
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def movement_history(request):
@@ -629,8 +905,6 @@ def movement_history(request):
     def get_profile_image_url(user):
         if not user:
             return None
-        
-        # ตรวจสอบ field ต่างๆ ที่อาจเก็บรูป profile
         for field_name in ['profile_image', 'avatar']:
             if hasattr(user, field_name):
                 field = getattr(user, field_name)
@@ -639,17 +913,12 @@ def movement_history(request):
                         return request.build_absolute_uri(field.url)
                     except:
                         pass
-        
-        # ตรวจสอบ related profile model
         if hasattr(user, 'profile') and hasattr(user.profile, 'image'):
             if user.profile.image:
                 try:
-                    return request.build_absolute_uri(
-                        user.profile.image.url
-                    )
+                    return request.build_absolute_uri(user.profile.image.url)
                 except:
                     pass
-        
         return None
     
     def get_user_display_name(user):
@@ -703,19 +972,13 @@ def movement_history(request):
             products = products.filter(
                 Q(name__icontains=search) | Q(code__icontains=search)
             )
-        
         if start_date:
             products = products.filter(created_at__date__gte=start_date)
         if end_date:
             products = products.filter(created_at__date__lte=end_date)
         
         for product in products:
-            user = (
-                product.created_by 
-                if hasattr(product, 'created_by') 
-                else None
-            )
-            
+            user = product.created_by if hasattr(product, 'created_by') else None
             movements.append({
                 'id': f'in-{product.id}',
                 'date': product.created_at.isoformat(),
@@ -730,7 +993,6 @@ def movement_history(request):
             })
     
     movements.sort(key=lambda x: x['date'], reverse=True)
-    
     total = len(movements)
     movements = movements[:limit]
     
@@ -988,22 +1250,13 @@ def get_connected_users(request):
 @permission_classes([IsAuthenticated])
 def send_to_selected_users(request):
     if not LINE_AVAILABLE or not line_service:
-        return Response(
-            {"error": "LINE service unavailable"}, 
-            status=503
-        )
+        return Response({"error": "LINE service unavailable"}, status=503)
     
     user_ids = request.data.get('user_ids', [])
-    message = request.data.get(
-        'message', 
-        '🔔 ข้อความจากระบบ EasyStock'
-    )
+    message = request.data.get('message', '🔔 ข้อความจากระบบ EasyStock')
     
     if not user_ids:
-        return Response(
-            {"error": "No users selected"}, 
-            status=400
-        )
+        return Response({"error": "No users selected"}, status=400)
     
     sent_count = 0
     failed_count = 0
@@ -1012,22 +1265,16 @@ def send_to_selected_users(request):
     for user_id in user_ids:
         try:
             setting = NotificationSettings.objects.get(user_id=user_id)
-            
             if setting.line_user_id:
-                result = line_service.send_text_message(
-                    setting.line_user_id, message
-                )
+                result = line_service.send_text_message(setting.line_user_id, message)
                 if result.get('success'):
                     sent_count += 1
                 else:
                     failed_count += 1
-                    errors.append(
-                        f"User {user_id}: {result.get('error')}"
-                    )
+                    errors.append(f"User {user_id}: {result.get('error')}")
             else:
                 failed_count += 1
                 errors.append(f"User {user_id}: No LINE ID")
-                
         except NotificationSettings.DoesNotExist:
             failed_count += 1
             errors.append(f"User {user_id}: Settings not found")
@@ -1047,18 +1294,11 @@ def send_to_selected_users(request):
 @permission_classes([IsAuthenticated])
 def broadcast_message(request):
     if not LINE_AVAILABLE or not line_service:
-        return Response(
-            {"error": "LINE service unavailable"}, 
-            status=503
-        )
+        return Response({"error": "LINE service unavailable"}, status=503)
     
     message = request.data.get('message')
-    
     if not message:
-        return Response(
-            {"error": "Message is required"}, 
-            status=400
-        )
+        return Response({"error": "Message is required"}, status=400)
     
     connected_settings = NotificationSettings.objects.filter(
         line_user_id__isnull=False
@@ -1069,19 +1309,14 @@ def broadcast_message(request):
     
     for setting in connected_settings:
         try:
-            result = line_service.send_text_message(
-                setting.line_user_id, message
-            )
+            result = line_service.send_text_message(setting.line_user_id, message)
             if result.get('success'):
                 sent_count += 1
             else:
                 failed_count += 1
         except Exception as e:
             failed_count += 1
-            print(
-                f"Broadcast error for user "
-                f"{setting.user.username}: {e}"
-            )
+            print(f"Broadcast error for user {setting.user.username}: {e}")
     
     return Response({
         'success': True,
@@ -1095,9 +1330,7 @@ def broadcast_message(request):
 @permission_classes([IsAuthenticated])
 def delete_line_user_id(request):
     try:
-        settings_obj = NotificationSettings.objects.get(
-            user=request.user
-        )
+        settings_obj = NotificationSettings.objects.get(user=request.user)
         settings_obj.line_user_id = None
         settings_obj.save()
     except NotificationSettings.DoesNotExist: 
@@ -1109,42 +1342,20 @@ def delete_line_user_id(request):
 @permission_classes([IsAuthenticated])
 def send_test_message(request):
     if not LINE_AVAILABLE or not line_service:
-        return Response(
-            {"error": "LINE service unavailable"}, 
-            status=503
-        )
+        return Response({"error": "LINE service unavailable"}, status=503)
     
     try:
-        settings_obj = NotificationSettings.objects.get(
-            user=request.user
-        )
-        
+        settings_obj = NotificationSettings.objects.get(user=request.user)
         if not settings_obj.line_user_id:
-            return Response(
-                {"error": "LINE not connected"}, 
-                status=400
-            )
+            return Response({"error": "LINE not connected"}, status=400)
         
-        result = line_service.send_test_message(
-            settings_obj.line_user_id
-        )
-        
+        result = line_service.send_test_message(settings_obj.line_user_id)
         if result.get('success'):
-            return Response({
-                "success": True, 
-                "message": "Test message sent"
-            })
+            return Response({"success": True, "message": "Test message sent"})
         else:
-            return Response(
-                {"error": result.get('error')}, 
-                status=500
-            )
-            
+            return Response({"error": result.get('error')}, status=500)
     except NotificationSettings.DoesNotExist:
-        return Response(
-            {"error": "Notification settings not found"}, 
-            status=404
-        )
+        return Response({"error": "Notification settings not found"}, status=404)
     except Exception as e:
         return Response({"error": str(e)}, status=500)
 
@@ -1153,31 +1364,18 @@ def send_test_message(request):
 @permission_classes([IsAuthenticated])
 def send_low_stock_alerts(request):
     if not LINE_AVAILABLE: 
-        return Response(
-            {"error": "Service unavailable"}, 
-            status=503
-        )
+        return Response({"error": "Service unavailable"}, status=503)
     
     try:
-        settings_obj = NotificationSettings.objects.get(
-            user=request.user
-        )
-        
+        settings_obj = NotificationSettings.objects.get(user=request.user)
         if not settings_obj.line_user_id: 
-            return Response(
-                {"error": "No Line ID"}, 
-                status=400
-            )
+            return Response({"error": "No Line ID"}, status=400)
         
-        low_stock = Product.objects.filter(
-            is_deleted=False, stock__lt=5, stock__gt=0
-        )
+        low_stock = Product.objects.filter(is_deleted=False, stock__lt=5, stock__gt=0)
         cnt = 0
-        
         for p in low_stock:
             res = line_service.send_low_stock_alert(
-                settings_obj.line_user_id, 
-                p.name, p.code, p.stock, p.unit
+                settings_obj.line_user_id, p.name, p.code, p.stock, p.unit
             )
             if res.get('success'): 
                 cnt += 1
@@ -1191,612 +1389,108 @@ def send_low_stock_alerts(request):
 @permission_classes([IsAuthenticated])
 def get_line_profile(request):
     try:
-        settings_obj = NotificationSettings.objects.get(
-            user=request.user
-        )
-        
+        settings_obj = NotificationSettings.objects.get(user=request.user)
         if not settings_obj.line_user_id: 
-            return Response(
-                {"error": "No ID"}, 
-                status=400
-            )
-        
+            return Response({"error": "No ID"}, status=400)
         res = line_service.get_profile(settings_obj.line_user_id)
-        
-        return Response(
-            res['data'] if res.get('success') else res
-        )
+        return Response(res['data'] if res.get('success') else res)
     except Exception as e:
         return Response({"error": str(e)}, status=500)
 
 
-# ==================== FESTIVAL VIEWSET ====================
 
-class FestivalViewSet(viewsets.ModelViewSet):
+# ==================== TOP PRODUCTS (สินค้าขายดี) ====================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def top_products(request):
     """
-    จัดการเทศกาล
+    สินค้าขายดี - ดึงจากยอดเบิกจริงใน IssueLine
     """
-    queryset = Festival.objects.all()
-    serializer_class = FestivalSerializer
-    permission_classes = [IsAuthenticated]
+    period = request.query_params.get('period', 'month')
+    limit = int(request.query_params.get('limit', 10))
+    start_date_str = request.query_params.get('start_date')
+    end_date_str = request.query_params.get('end_date')
+    min_qty = int(request.query_params.get('min_qty', 25))
 
-    def get_serializer_class(self):
-        if self.action == 'with_best_sellers':
-            return FestivalWithBestSellersSerializer
-        elif self.action == 'retrieve':
-            return FestivalWithBestSellersSerializer
-        return FestivalSerializer
+    if limit < 1 or limit > 100:
+        limit = 10
 
-    @action(detail=False, methods=['get'])
-    def upcoming(self, request):
-        today = timezone.now().date()
-        next_days = today + timedelta(days=60)
+    today = timezone.now().date()
 
-        festivals = Festival.objects.filter(
-            start_date__gte=today,
-            start_date__lte=next_days
-        ).order_by('start_date')
+    period_map = {
+        'all': None,
+        'year': today - timedelta(days=365),
+        'month': today - timedelta(days=30),
+        '1days': timezone.now() - timedelta(hours=24),
+        '7days': today - timedelta(days=7),
+    }
 
-        serializer = self.get_serializer(festivals, many=True)
-        return Response({
-            'count': festivals.count(),
-            'today': today,
-            'results': serializer.data
-        })
-
-    @action(detail=False, methods=['get'])
-    def calendar(self, request):
-        year = int(request.query_params.get('year', timezone.now().year))
-        month = int(request.query_params.get('month', timezone.now().month))
-
-        if month < 1 or month > 12:
-            return Response(
-                {'error': 'Month must be between 1 and 12'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        first_day = datetime(year, month, 1).date()
-        if month == 12:
-            last_day = (
-                datetime(year + 1, 1, 1).date() - 
-                timedelta(days=1)
-            )
-        else:
-            last_day = (
-                datetime(year, month + 1, 1).date() - 
-                timedelta(days=1)
-            )
-
-        festivals = Festival.objects.filter(
-            start_date__lte=last_day,
-            end_date__gte=first_day
-        ).order_by('start_date')
-
-        serializer = self.get_serializer(festivals, many=True)
-        
-        return Response({
-            'year': year,
-            'month': month,
-            'month_name': first_day.strftime('%B'),
-            'festivals': serializer.data,
-            'count': festivals.count()
-        })
-
-    @action(detail=False, methods=['get'])
-    def with_best_sellers(self, request):
-        festivals = Festival.objects.prefetch_related(
-            'best_sellers'
-        ).all()
-        serializer = self.get_serializer(festivals, many=True)
-        return Response({
-            'count': festivals.count(),
-            'results': serializer.data
-        })
-
-    @action(detail=True, methods=['get'])
-    def best_sellers(self, request, pk=None):
-        festival = self.get_object()
-        best_sellers = BestSeller.objects.filter(
-            festival=festival
-        ).order_by('rank')
-
-        serializer = BestSellerDetailSerializer(best_sellers, many=True)
-        return Response({
-            'festival': FestivalSerializer(festival).data,
-            'best_sellers': serializer.data,
-            'count': best_sellers.count()
-        })
-
-
-# ==================== BEST SELLER VIEWSET ====================
-
-class BestSellerViewSet(viewsets.ModelViewSet):
-    """
-    วิเคราะห์สินค้าขายดี
-    """
-    queryset = BestSeller.objects.all()
-    serializer_class = BestSellerSerializer
-    permission_classes = [IsAuthenticated]
-
-    @action(detail=False, methods=['get'])
-    def top_products(self, request):
-        period = request.query_params.get('period', 'month')
-        limit = int(request.query_params.get('limit', 10))
-        start_date_str = request.query_params.get('start_date')
-        end_date_str = request.query_params.get('end_date')
-        min_qty = int(request.query_params.get('min_qty', 25))
-
-        if limit < 1 or limit > 100:
-            limit = 10
-
-        today = timezone.now().date()
-
-        period_map = {
-            'all': None,
-            'year': today - timedelta(days=365),
-            'month': today - timedelta(days=30),
-            '1days': timezone.now() - timedelta(hours=24),
-            '7days': today - timedelta(days=7),
-        }
-
-        if period == 'custom' and start_date_str and end_date_str:
-            try:
-                from datetime import datetime as dt
-                start_date = dt.strptime(
-                    start_date_str, '%Y-%m-%d'
-                ).date()
-                end_date = dt.strptime(
-                    end_date_str, '%Y-%m-%d'
-                ).date()
-                
-                end_datetime = timezone.make_aware(
-                    dt.combine(end_date, dt.max.time())
-                )
-                start_datetime = timezone.make_aware(
-                    dt.combine(start_date, dt.min.time())
-                )
-                
-                issue_data = IssueLine.objects.filter(
-                    issue__created_at__gte=start_datetime,
-                    issue__created_at__lte=end_datetime
-                )
-            except Exception as e:
-                print(f"Error parsing custom dates: {e}")
-                issue_data = IssueLine.objects.all()
-        else:
-            start_datetime = period_map.get(period)
-
-            if start_datetime:
-                if period == '1days':
-                    issue_data = IssueLine.objects.filter(
-                        issue__created_at__gte=start_datetime
-                    )
-                else:
-                    issue_data = IssueLine.objects.filter(
-                        issue__created_at__date__gte=start_datetime
-                    )
-            else:
-                issue_data = IssueLine.objects.all()
-
-        top_products = issue_data.values('product').annotate(
-            total_issued=Sum('qty'),
-            transactions=Count('id')
-        ).filter(
-            total_issued__gte=min_qty
-        ).order_by('-total_issued')[:limit]
-
-        results = []
-        for idx, tp in enumerate(top_products, 1):
-            try:
-                product = Product.objects.get(id=tp['product'])
-                results.append({
-                    'rank': idx,
-                    'product': {
-                        'id': product.id,
-                        'name': product.name,
-                        'code': product.code,
-                        'category': (
-                            product.category.name 
-                            if product.category 
-                            else None
-                        )
-                    },
-                    'total_issued': tp['total_issued'],
-                    'transactions': tp['transactions'],
-                    'period': period
-                })
-            except Product.DoesNotExist:
-                continue
-
-        return Response({
-            'period': period,
-            'limit': limit,
-            'min_qty': min_qty,
-            'count': len(results),
-            'results': results
-        })
-
-    @action(detail=False, methods=['get'])
-    def festival_forecast(self, request):
-        today = timezone.now().date()
-
-        upcoming_festival = Festival.objects.filter(
-            start_date__gte=today
-        ).order_by('start_date').first()
-
-        if not upcoming_festival:
-            return Response({
-                'message': 'No upcoming festival found',
-                'today': today
-            })
-
-        best_sellers = BestSeller.objects.filter(
-            festival=upcoming_festival
-        ).order_by('rank')[:10]
-
-        recommendations = []
-        for bs in best_sellers:
-            suggested_qty = int(bs.last_year_count * 1.1)
-            confidence = min(
-                90, 50 + abs(bs.percentage_increase)
-            )
-
-            recommendations.append({
-                'product': {
-                    'id': bs.product.id,
-                    'name': bs.product.name,
-                    'code': bs.product.code,
-                    'unit': bs.product.unit
-                },
-                'last_year_count': bs.last_year_count,
-                'suggested_increase': (
-                    suggested_qty - bs.last_year_count
-                ),
-                'suggested_quantity': suggested_qty,
-                'percentage_increase': bs.percentage_increase,
-                'confidence': confidence,
-                'rank': bs.rank
-            })
-
-        days_left = (
-            upcoming_festival.start_date - today
-        ).days
-
-        return Response({
-            'upcoming_festival': {
-                'id': upcoming_festival.id,
-                'name': upcoming_festival.name,
-                'icon': upcoming_festival.icon,
-                'start_date': upcoming_festival.start_date,
-                'end_date': upcoming_festival.end_date,
-                'days_left': days_left,
-                'duration': upcoming_festival.duration_days
-            },
-            'recommendations': recommendations,
-            'count': len(recommendations),
-            'average_confidence': (
-                sum([r['confidence'] for r in recommendations]) / 
-                len(recommendations) 
-                if recommendations 
-                else 0
-            )
-        })
-
-    @action(detail=False, methods=['get'])
-    def category_analysis(self, request):
-        festival_id = request.query_params.get('festival_id')
-
-        if not festival_id:
-            return Response(
-                {'error': 'festival_id is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
+    if period == 'custom' and start_date_str and end_date_str:
         try:
-            festival = Festival.objects.get(id=festival_id)
-        except Festival.DoesNotExist:
-            return Response(
-                {'error': 'Festival not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        best_sellers = BestSeller.objects.filter(
-            festival=festival
-        ).select_related('product__category')
-
-        analysis = {}
-        for bs in best_sellers:
-            category_name = (
-                bs.product.category.name 
-                if bs.product.category 
-                else 'Uncategorized'
-            )
-            if category_name not in analysis:
-                analysis[category_name] = {
-                    'category': category_name,
-                    'products': [],
-                    'total_issued': 0,
-                    'count': 0
-                }
+            from datetime import datetime as dt
+            start_date = dt.strptime(start_date_str, '%Y-%m-%d').date()
+            end_date = dt.strptime(end_date_str, '%Y-%m-%d').date()
             
-            analysis[category_name]['products'].append({
-                'name': bs.product.name,
-                'code': bs.product.code,
-                'total_issued': bs.total_issued,
-                'rank': bs.rank
-            })
-            analysis[category_name]['total_issued'] += bs.total_issued
-            analysis[category_name]['count'] += 1
-
-        return Response({
-            'festival': FestivalSerializer(festival).data,
-            'categories': list(analysis.values()),
-            'total_categories': len(analysis)
-        })
-
-    @action(detail=False, methods=['post'])
-    def bulk_create(self, request):
-        try:
-            festival_id = request.data.get('festival_id')
-            best_sellers_data = request.data.get('best_sellers', [])
-
-            festival = Festival.objects.get(id=festival_id)
-            created_count = 0
-
-            for data in best_sellers_data:
-                try:
-                    product = Product.objects.get(
-                        id=data['product_id']
-                    )
-                    bs, created = (
-                        BestSeller.objects.update_or_create(
-                            product=product,
-                            festival=festival,
-                            defaults={
-                                'total_issued': data.get(
-                                    'total_issued', 0
-                                ),
-                                'rank': data.get('rank', 0),
-                                'last_year_count': data.get(
-                                    'last_year_count', 0
-                                ),
-                                'this_year_count': data.get(
-                                    'total_issued', 0
-                                )
-                            }
-                        )
-                    )
-                    if created:
-                        created_count += 1
-                except Product.DoesNotExist:
-                    continue
-
-            return Response({
-                'festival_id': festival_id,
-                'created': created_count,
-                'total': len(best_sellers_data)
-            }, status=status.HTTP_201_CREATED)
-
-        except Festival.DoesNotExist:
-            return Response(
-                {'error': 'Festival not found'},
-                status=status.HTTP_404_NOT_FOUND
+            end_datetime = timezone.make_aware(dt.combine(end_date, dt.max.time()))
+            start_datetime = timezone.make_aware(dt.combine(start_date, dt.min.time()))
+            
+            issue_data = IssueLine.objects.filter(
+                issue__created_at__gte=start_datetime,
+                issue__created_at__lte=end_datetime
             )
         except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            print(f"Error parsing custom dates: {e}")
+            issue_data = IssueLine.objects.all()
+    else:
+        start_datetime = period_map.get(period)
 
-
-# ==================== DASHBOARD VIEWSETS ====================
-
-class EmployeeDashboardViewSet(viewsets.ModelViewSet):
-    """
-    แดชบอร์ดสำหรับพนักงาน
-    """
-    permission_classes = [IsEmployee]
-    http_method_names = ['get']
-    queryset = Product.objects.none()
-
-    @action(detail=False, methods=['get'])
-    def overview(self, request):
-        from zoneinfo import ZoneInfo
-        from datetime import time
-        
-        bangkok_tz = ZoneInfo('Asia/Bangkok')
-        now = timezone.now().astimezone(bangkok_tz)
-        today = now.date()
-        start = datetime.combine(today, time.min, tzinfo=bangkok_tz)
-        end = datetime.combine(today, time.max, tzinfo=bangkok_tz)
-        
-        total_products = Product.objects.filter(
-            is_deleted=False
-        ).count()
-        
-        low_stock = Product.objects.filter(
-            is_deleted=False, stock__gt=0, stock__lt=5
-        ).values(
-            'id', 'code', 'name', 'stock', 'unit'
-        ).order_by('stock')[:10]
-        
-        today_issued = IssueLine.objects.filter(
-            issue__created_at__gte=start,
-            issue__created_at__lte=end
-        ).aggregate(
-            total_qty=Sum('qty'), 
-            total_items=Count('id')
-        )
-        
-        upcoming_festivals = Festival.objects.filter(
-            start_date__gte=today
-        ).order_by('start_date')[:5].values(
-            'id', 'name', 'icon', 'start_date'
-        )
-        
-        top_products = IssueLine.objects.filter(
-            issue__created_at__gte=start,
-            issue__created_at__lte=end
-        ).values(
-            'product__id', 
-            'product__code', 
-            'product__name'
-        ).annotate(
-            qty=Sum('qty')
-        ).order_by('-qty')[:5]
-        
-        return Response({
-            'total_products': total_products,
-            'low_stock_count': low_stock.count(),
-            'low_stock_items': list(low_stock),
-            'today_sales': {
-                'total_quantity': today_issued['total_qty'] or 0,
-                'total_transactions': today_issued['total_items'] or 0,
-            },
-            'upcoming_festivals': list(upcoming_festivals),
-            'top_products_today': list(top_products)
-        })
-
-
-class AdminDashboardViewSet(viewsets.ModelViewSet):
-    """
-    แดชบอร์ดสำหรับ Admin
-    """
-    permission_classes = [IsAdmin]
-    http_method_names = ['get']
-    queryset = Product.objects.none()
-
-    @action(detail=False, methods=['get'])
-    def financial(self, request):
-        products = Product.objects.filter(is_deleted=False)
-        
-        total_selling_value = 0
-        
-        for p in products:
-            total_selling_value += float(p.selling_price or 0) * p.stock
-
-
-        return Response({
-            'total_selling_value': total_selling_value,
-            'total_products': products.count(),
-            'total_stock_items': (
-                products.aggregate(Sum('stock'))['stock__sum'] or 0
-            )
-        })
-
-    @action(detail=False, methods=['get'])
-    def category_breakdown(self, request):
-        categories = Category.objects.annotate(
-            product_count=Count('product'),
-            total_stock=Sum('product__stock')
-        ).values('id', 'name', 'product_count', 'total_stock')
-        
-        return Response({
-            'categories': list(categories)
-        })
-
-    @action(detail=False, methods=['get'])
-    def top_products(self, request):
-        top_products = Product.objects.filter(
-            is_deleted=False, stock__gt=0
-        ).annotate(
-            inventory_value=F('stock') * F('selling_price')
-        ).values(
-            'id', 'code', 'name', 'stock', 
-            'selling_price', 'category__name'
-        ).order_by('-inventory_value')[:20]
-        
-        return Response({
-            'top_products': list(top_products)
-        })
-
-
-# ==================== CUSTOM EVENT VIEWSET ====================
-
-class CustomEventViewSet(viewsets.ModelViewSet):
-    """
-    ระบบจัดการบันทึกส่วนตัว
-    """
-    serializer_class = CustomEventSerializer
-    permission_classes = [IsAuthenticated]
-    
-    def get_queryset(self):
-        user = self.request.user
-        return CustomEvent.objects.filter(
-            Q(created_by=user) | Q(is_shared=True)
-        ).distinct()
-    
-    def perform_create(self, serializer):
-        user = self.request.user
-        
-        if user.is_superuser or user.is_staff:
-            serializer.save(
-                created_by=user,
-                is_shared=True  
-            )
+        if start_datetime:
+            if period == '1days':
+                issue_data = IssueLine.objects.filter(
+                    issue__created_at__gte=start_datetime
+                )
+            else:
+                issue_data = IssueLine.objects.filter(
+                    issue__created_at__date__gte=start_datetime
+                )
         else:
-            serializer.save(created_by=user)
-    
-    def perform_update(self, serializer):
-        instance = self.get_object()
-        if (instance.created_by != self.request.user and 
-            not self.request.user.is_staff):
-            from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied("คุณไม่มีสิทธิ์แก้ไขรายการนี้")
-        serializer.save()
-    
-    def perform_destroy(self, instance):
-        if (instance.created_by != self.request.user and 
-            not self.request.user.is_staff):
-            from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied("คุณไม่มีสิทธิ์ลบรายการนี้")
-        instance.delete()
-    
-    @action(detail=False, methods=['get'])
-    def my_events(self, request):
-        queryset = CustomEvent.objects.filter(
-            created_by=request.user
-        )
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=False, methods=['get'])
-    def calendar(self, request):
-        year = request.query_params.get('year')
-        month = request.query_params.get('month')
-        
-        queryset = self.get_queryset()
-        
-        if year:
-            queryset = queryset.filter(date__year=year)
-        if month:
-            queryset = queryset.filter(date__month=month)
-        
-        serializer = self.get_serializer(queryset, many=True)
-        return Response({
-            'year': year,
-            'month': month,
-            'events': serializer.data,
-            'count': queryset.count()
-        })
-    
-    @action(detail=False, methods=['get'])
-    def upcoming(self, request):
-        today = timezone.now().date()
-        queryset = self.get_queryset().filter(
-            date__gte=today
-        ).order_by('date')[:10]
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=False, methods=['get'])
-    def upcoming_shared(self, request):
-        today = timezone.now().date()
-        
-        queryset = CustomEvent.objects.filter(
-            is_shared=True,
-            date__gte=today 
-        ).select_related('created_by').order_by('date')[:10]
-        
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
+            issue_data = IssueLine.objects.all()
+
+    top_products_data = issue_data.values('product').annotate(
+        total_issued=Sum('qty'),
+        transactions=Count('id')
+    ).filter(
+        total_issued__gte=min_qty
+    ).order_by('-total_issued')[:limit]
+
+    results = []
+    for idx, tp in enumerate(top_products_data, 1):
+        try:
+            product = Product.objects.get(id=tp['product'])
+            results.append({
+                'rank': idx,
+                'product': {
+                    'id': product.id,
+                    'name': product.name,
+                    'code': product.code,
+                    'category': (
+                        product.category.name 
+                        if product.category 
+                        else None
+                    )
+                },
+                'total_issued': tp['total_issued'],
+                'transactions': tp['transactions'],
+                'period': period
+            })
+        except Product.DoesNotExist:
+            continue
+
+    return Response({
+        'period': period,
+        'limit': limit,
+        'min_qty': min_qty,
+        'count': len(results),
+        'results': results
+    })

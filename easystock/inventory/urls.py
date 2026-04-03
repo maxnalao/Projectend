@@ -1,4 +1,4 @@
-# inventory/urls.py (CLEANED VERSION - ลบโค้ดที่ไม่ใช้แล้ว)
+# inventory/urls.py (CLEANED VERSION - ลบ BestSeller ออกแล้ว)
 
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
@@ -11,13 +11,8 @@ router.register(r'products', views.ProductViewSet, basename='product')
 router.register(r'categories', views.CategoryViewSet, basename='category')
 router.register(r'listings', views.ListingViewSet, basename='listing')
 
-# ================ FESTIVAL & ANALYSIS ================
+# ================ FESTIVAL ================
 router.register(r'festivals', views.FestivalViewSet, basename='festival')
-router.register(
-    r'best-sellers', 
-    views.BestSellerViewSet, 
-    basename='best-seller'
-)
 
 # ================ TASKS & USERS ================
 router.register(r'tasks', views.TaskViewSet, basename='task')
@@ -57,15 +52,19 @@ urlpatterns = [
         views.product_unlist, 
         name='product-unlist'
     ),
-    path(
-        'dashboard-stats/', 
-        views.dashboard_stats, 
-        name='dashboard-stats'
-    ),
+    # ✅ redirect dashboard-stats ไปที่ admin-dashboard/overview แทน
+    # path('dashboard-stats/', views.dashboard_stats, name='dashboard-stats'),
     path(
         'movement-history/', 
         views.movement_history, 
         name='movement-history'
+    ),
+    
+    # ================ TOP PRODUCTS (สินค้าขายดี) ================
+    path(
+        'best-sellers/top_products/',
+        views.top_products,
+        name='top-products'
     ),
     
     # ================ LINE MESSAGING API ================

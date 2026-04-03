@@ -1,13 +1,14 @@
+# inventory/admin.py (CLEANED VERSION - ลบ BestSeller ออกแล้ว)
+
 from django.contrib import admin
 from .models import (
-    Product, Category, Festival, BestSeller, 
-     Task
+    Product, Category, Festival, Task
 )
 
 # ================ Product Admin ================
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ['code', 'name', 'category','selling_price', 'stock', 'created_at']
+    list_display = ['code', 'name', 'category', 'selling_price', 'stock', 'created_at']
     list_filter = ['category', 'on_sale', 'is_deleted', 'created_at']
     search_fields = ['code', 'name']
     readonly_fields = ['created_at']
@@ -16,7 +17,7 @@ class ProductAdmin(admin.ModelAdmin):
             'fields': ('code', 'name', 'category', 'unit')
         }),
         ('ราคา', {
-            'fields': ('selling_price', 'price')
+            'fields': ('selling_price',)
         }),
         ('สต็อก', {
             'fields': ('stock', 'initial_stock')
@@ -53,28 +54,7 @@ class FestivalAdmin(admin.ModelAdmin):
     )
 
 
-# ================ BestSeller Admin ================
-@admin.register(BestSeller)
-class BestSellerAdmin(admin.ModelAdmin):
-    list_display = ['product', 'festival', 'rank', 'total_issued', 'percentage_increase']
-    list_filter = ['festival', 'rank', 'recorded_date']
-    search_fields = ['product__name', 'festival__name']
-    readonly_fields = ['percentage_increase', 'recorded_date', 'created_at', 'updated_at']
-    fieldsets = (
-        ('ข้อมูล', {
-            'fields': ('product', 'festival', 'rank')
-        }),
-        ('สถิติ', {
-            'fields': ('total_issued', 'last_year_count', 'this_year_count', 'percentage_increase')
-        }),
-        ('เพิ่มเติม', {
-            'fields': ('notes', 'recorded_date', 'created_at', 'updated_at')
-        }),
-    )
-
-
-
-# ================ Task Admin (NEW) ================
+# ================ Task Admin ================
 @admin.register(Task)
 class TaskAdmin(admin.ModelAdmin):
     list_display = ['title', 'assigned_to', 'status', 'priority', 'due_date']

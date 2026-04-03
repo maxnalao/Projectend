@@ -32,8 +32,9 @@ const EmployeeDashboard = () => {
 
   const fetchDashboardData = async () => {
     try {
-      const { data: dashboardData } = await api.get('/dashboard-stats/');
-      
+      // ✅ เรียก EmployeeDashboardViewSet endpoint
+      const { data: dashboardData } = await api.get('/employee-dashboard/overview/');
+
       try {
         const { data: listingsData } = await api.get("/listings/?active=1");
         const listingArr = Array.isArray(listingsData) ? listingsData : (listingsData.results ?? []);
@@ -41,10 +42,10 @@ const EmployeeDashboard = () => {
           const qty = parseFloat(p.quantity) || 0;
           return sum + qty;
         }, 0);
-        
+
         setStats({
           ...dashboardData,
-          total_products: totalStock  
+          total_products: totalStock
         });
       } catch {
         setStats(dashboardData);
