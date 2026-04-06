@@ -254,7 +254,10 @@ class CategoryViewSet(viewsets.ModelViewSet):
     """
     จัดการหมวดหมู่สินค้า
     """
+    # ดึงหมวดหมู่ทั้งหมดจาก Model Category เรียงตามชื่อ A-Z
     queryset = Category.objects.all().order_by("name")
+
+    # ใช้ CategorySerializer แปลงข้อมูลเป็น JSON
     serializer_class = CategorySerializer
     permission_classes = [IsAuthenticated]
 
@@ -262,23 +265,27 @@ class CategoryViewSet(viewsets.ModelViewSet):
 # ==================== LISTING VIEWSET ====================
 
 class ListingViewSet(viewsets.ModelViewSet):
-    """
-    จัดการสินค้าที่แสดงขาย
-    """
+
+    # ดึงข้อมูล Listing พร้อม JOIN product และ category มาด้วย
+    # กรองเฉพาะสินค้าที่ยังไม่ถูกลบ
     queryset = Listing.objects.select_related(
         "product", "product__category"
     ).filter(product__is_deleted=False)
-    serializer_class = ListingSerializer
-    permission_classes = [IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser] 
+
+    serializer_class = ListingSerializer           # ใช้ ListingSerializer แปลงเป็น JSON
+    permission_classes = [IsAuthenticated]         # ต้อง login ก่อน
+    parser_classes = [MultiPartParser, FormParser] # รองรับอัปโหลดรูปภาพ
     http_method_names = ["get", "patch", "post", "delete"]
 
     def get_queryset(self):
-        qs = super().get_queryset().order_by("-id")
+        qs = super().get_queryset().order_by("-id") # เรียงจากใหม่ไปเก่า
+
+        # กรองเฉพาะ active ถ้าส่ง ?active=1 มา
         active = self.request.query_params.get("active", "1")
         if str(active).lower() in ("1", "true", "yes"):
             qs = qs.filter(is_active=True)
 
+        # ค้นหาจากชื่อ รหัส หรือ title ถ้าส่ง ?search=xxx มา
         search = self.request.query_params.get("search")
         if search:
             qs = qs.filter(
@@ -287,20 +294,25 @@ class ListingViewSet(viewsets.ModelViewSet):
                 Q(title__icontains=search)
             )
 
+        # กรองตามหมวดหมู่ถ้าส่ง ?category=xxx มา
         cat = self.request.query_params.get("category")
         if cat:
             if str(cat).isdigit():
                 qs = qs.filter(product__category_id=int(cat))
             else:
                 qs = qs.filter(product__category__name=cat)
-        return qs
+
+        return qs # ส่งข้อมูลที่กรองแล้วกลับไป
 
     def perform_update(self, serializer):
+        # แก้ไข Listing โดยล็อค product เดิมไว้
         instance = self.get_object()
+        #บันทึกข้อมูลใหม่ลงฐานข้อมูล
         serializer.save(product=instance.product)
 
     @action(detail=True, methods=["post", "patch"])
     def unlist(self, request, pk=None):
+        # ซ่อนสินค้าออกจากรายการ โดยเปลี่ยน is_active เป็น False
         obj = self.get_object()
         if obj.is_active:
             obj.is_active = False
@@ -308,83 +320,65 @@ class ListingViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(obj).data)
 
     def destroy(self, request, *args, **kwargs):
-        obj = self.get_object()
-        obj.delete()
+        # ลบ Listing ออกจากฐานข้อมูล ส่ง 204 กลับไป
+        obj = self.get_object()# Listing.objects.get(id=id) → listing object
+        obj.delete() # listing.delete() → ลบออกจาก DB → deleted
         return Response(status=status.HTTP_204_NO_CONTENT)
-
 
 # ==================== TASK VIEWSET ====================
 
 class TaskViewSet(viewsets.ModelViewSet):
-    """
-    จัดการงานที่มอบหมาย
-    """
     serializer_class = TaskSerializer
-    permission_classes = [IsAuthenticated]
-    
+    permission_classes = [IsAuthenticated] # ต้อง login ก่อน
+
     def get_queryset(self):
         user = self.request.user
         if user.is_staff or user.is_superuser:
+            # Admin → ดึงงานทั้งหมด
             return Task.objects.all().order_by('-due_date')
         else:
+            # พนักงาน → ดึงเฉพาะงานที่มอบหมายให้ตัวเอง
             return Task.objects.filter(
                 assigned_to=user
             ).order_by('-due_date')
-    
+
     @action(detail=False, methods=['get'])
     def my_tasks(self, request):
-        user = request.user
-        tasks = Task.objects.filter(
-            assigned_to=user
-        ).order_by('-due_date')
-        
-        pending = tasks.filter(status='pending')
-        in_progress = tasks.filter(status='in_progress')
-        completed = tasks.filter(status='completed')
-        
+        # GET /tasks/my_tasks/ → ดึงงานของตัวเองแยกตาม status
+        tasks = Task.objects.filter(assigned_to=request.user)
         return Response({
-            'pending': TaskSerializer(pending, many=True).data,
-            'in_progress': TaskSerializer(in_progress, many=True).data,
-            'completed': TaskSerializer(completed, many=True).data,
-            'total': tasks.count()
+            'pending':     TaskSerializer(tasks.filter(status='pending'), many=True).data,     # รอดำเนินการ
+            'in_progress': TaskSerializer(tasks.filter(status='in_progress'), many=True).data, # กำลังทำ
+            'completed':   TaskSerializer(tasks.filter(status='completed'), many=True).data,   # เสร็จแล้ว
+            'total':       tasks.count()
         })
-    
+
     @action(detail=False, methods=['get'])
     def urgent_tasks(self, request):
-        user = request.user
+        # GET /tasks/urgent_tasks/ → ดึงงานด่วน/สูงที่ยังไม่เสร็จ
         tasks = Task.objects.filter(
-            assigned_to=user,
-            priority__in=['high', 'urgent'],
-            status__in=['pending', 'in_progress']
-        ).order_by('due_date')
-        
-        return Response({
-            'count': tasks.count(),
-            'tasks': TaskSerializer(tasks, many=True).data
-        })
-    
+            assigned_to=request.user,
+            priority__in=['high', 'urgent'],        # priority สูงหรือด่วน
+            status__in=['pending', 'in_progress']   # ยังไม่เสร็จ
+        ).order_by('due_date') # เรียงจากใกล้กำหนดก่อน
+        return Response({'count': tasks.count(), 'tasks': TaskSerializer(tasks, many=True).data})
+
     @action(detail=True, methods=['post', 'patch'])
     def update_status(self, request, pk=None):
-        task = self.get_object()
-        status_choice = request.data.get('status')
-        notes = request.data.get('notes', '')
-        
+        # PATCH /tasks/{id}/update_status/ → เปลี่ยนสถานะงาน
+        task          = self.get_object()              # ดึงงานจาก id
+        status_choice = request.data.get('status')    # รับ status ใหม่
+        notes         = request.data.get('notes', '') # รับ notes (ถ้ามี)
+
         if status_choice in dict(Task.STATUS_CHOICES):
             task.status = status_choice
             if notes:
-                current_notes = task.notes or ''
-                task.notes = (
-                    f"{current_notes}\n"
-                    f"[{timezone.now()}] {notes}"
-                )
-            
-            task.save()
-            return Response(TaskSerializer(task).data)
+                # ต่อ notes เดิม + เพิ่ม notes ใหม่พร้อมเวลา
+                task.notes = f"{task.notes or ''}\n[{timezone.now()}] {notes}"
+            task.save() # บันทึกลง DB
+            return Response(TaskSerializer(task).data) # ส่ง 200 OK
         else:
-            return Response(
-                {'error': 'Invalid status'}, 
-                status=400
-            )
+            return Response({'error': 'Invalid status'}, status=400)
 
 class EmployeeDashboardViewSet(viewsets.ModelViewSet):
     """
@@ -407,9 +401,23 @@ class EmployeeDashboardViewSet(viewsets.ModelViewSet):
         
         total_products = Product.objects.filter(is_deleted=False).count()
         
-        low_stock = Product.objects.filter(
+        # ✅ แก้ตรงนี้ — เปลี่ยนจาก .values() เป็น loop เพื่อสร้าง image_url
+        low_stock_qs = Product.objects.filter(
             is_deleted=False, stock__gt=0, stock__lt=5
-        ).values('id', 'code', 'name', 'stock', 'unit').order_by('stock')[:10]
+        ).order_by('stock')[:10]
+
+        low_items = []
+        for p in low_stock_qs:
+            # สร้าง URL รูปภาพแบบ absolute เหมือน Admin
+            img = request.build_absolute_uri(p.image.url) if p.image else None
+            low_items.append({
+                'id':        p.id,
+                'code':      p.code,
+                'name':      p.name,
+                'stock':     p.stock,
+                'unit':      p.unit,
+                'image_url': img,  # ✅ เพิ่ม image_url
+            })
         
         today_issued = IssueLine.objects.filter(
             issue__created_at__gte=start,
@@ -426,82 +434,10 @@ class EmployeeDashboardViewSet(viewsets.ModelViewSet):
         ).values(
             'product__id', 'product__code', 'product__name'
         ).annotate(qty=Sum('qty')).order_by('-qty')[:5]
-        
-        return Response({
-            'total_products': total_products,
-            'low_stock_count': low_stock.count(),
-            'low_stock_items': list(low_stock),
-            'today_sales': {
-                'total_quantity': today_issued['total_qty'] or 0,
-                'total_transactions': today_issued['total_items'] or 0,
-            },
-            'upcoming_festivals': list(upcoming_festivals),
-            'top_products_today': list(top_products_today)
-        })
 
-
-class AdminDashboardViewSet(viewsets.ModelViewSet):
-    """
-    แดชบอร์ดสำหรับ Admin
-    """
-    permission_classes = [IsAdmin]
-    http_method_names = ['get']
-    queryset = Product.objects.none()
-
-    @action(detail=False, methods=['get'])
-    def overview(self, request):
-        """
-        ✅ ย้ายมาจาก dashboard_stats function
-        รวมข้อมูลทั้งหมดที่ OverviewPage ต้องการ
-        """
-        from zoneinfo import ZoneInfo
-        from datetime import time
-
-        bangkok_tz = ZoneInfo('Asia/Bangkok')
-        now = timezone.now().astimezone(bangkok_tz)
-        today = now.date()
-        start = datetime.combine(today, time.min, tzinfo=bangkok_tz)
-        end = datetime.combine(today, time.max, tzinfo=bangkok_tz)
-
-        products = Product.objects.filter(is_deleted=False)
-        total_stock = products.aggregate(total=Sum("stock"))["total"] or 0
-
-        low_qs = Product.objects.filter(
-            is_deleted=False, stock__gt=0, stock__lt=5
-        )
-
-        in_today = Product.objects.filter(
-            is_deleted=False,
-            created_at__gte=start,
-            created_at__lte=end
-        ).count()
-
-        out_today = IssueLine.objects.filter(
-            issue__created_at__gte=start,
-            issue__created_at__lte=end
-        ).aggregate(total=Sum("qty"))["total"] or 0
-
-        # คำนวณมูลค่าสินค้าคงคลัง
-        total_inventory_value = sum(
-            float(p.selling_price or 0) * p.stock
-            for p in products
-        )
-
-        # สินค้าใกล้หมด
-        low_items = []
-        for p in low_qs.order_by("stock")[:10]:
-            img = request.build_absolute_uri(p.image.url) if p.image else None
-            low_items.append({
-                "id": p.id,
-                "code": p.code,
-                "name": p.name,
-                "stock": p.stock,
-                "unit": p.unit,
-                "image_url": img
-            })
-
-        # การเคลื่อนไหวสินค้าวันนี้
+        # ── movements (เหมือน Admin) ──
         all_mv = []
+
         issued = IssueLine.objects.select_related(
             "issue", "product"
         ).filter(
@@ -511,12 +447,12 @@ class AdminDashboardViewSet(viewsets.ModelViewSet):
         for l in issued:
             all_mv.append({
                 'datetime': l.issue.created_at,
-                'id': f'out_{l.id}',
+                'id':   f'out_{l.id}',
                 'date': l.issue.created_at.isoformat(),
                 'code': l.product.code,
                 'name': l.product.name,
                 'type': 'out',
-                'qty': l.qty
+                'qty':  l.qty
             })
 
         received = Product.objects.filter(
@@ -527,91 +463,195 @@ class AdminDashboardViewSet(viewsets.ModelViewSet):
         for p in received:
             all_mv.append({
                 'datetime': p.created_at,
-                'id': f'in_{p.id}',
+                'id':   f'in_{p.id}',
                 'date': p.created_at.isoformat(),
                 'code': p.code,
                 'name': p.name,
                 'type': 'in',
-                'qty': p.initial_stock or p.stock
+                'qty':  p.initial_stock or p.stock
             })
 
         all_mv.sort(key=lambda x: x['datetime'], reverse=True)
         movements = [
             {
-                'id': m['id'],
+                'id':   m['id'],
                 'date': m['date'],
                 'code': m['code'],
                 'name': m['name'],
                 'type': m['type'],
-                'qty': m['qty']
+                'qty':  m['qty']
             }
             for m in all_mv[:20]
         ]
-
-        # สถิติตามหมวดหมู่
-        cats = Product.objects.filter(is_deleted=False).values(
-            'category__name'
-        ).annotate(
-            count=Count('id'),
-            total_stock=Sum('stock')
-        ).order_by('-count')
-
-        cat_list = [
-            {
-                'category': c['category__name'] or 'ไม่ระบุ',
-                'count': c['count'],
-                'total_stock': c['total_stock'] or 0
-            }
-            for c in cats
-        ]
-
+        
         return Response({
-            "total_products": total_stock,
-            "low_stock_count": low_qs.count(),
-            "in_today": in_today,
-            "out_today": out_today,
-            "total_inventory_value": round(total_inventory_value, 2),
-            "low_stock_items": low_items,
-            "movements": movements,
-            "category_stats": cat_list
+            'total_products':   total_products,
+            'low_stock_count':  len(low_items),       # ✅ ใช้ len แทน .count()
+            'low_stock_items':  low_items,             # ✅ มี image_url แล้ว
+            'today_sales': {
+                'total_quantity':    today_issued['total_qty'] or 0,
+                'total_transactions': today_issued['total_items'] or 0,
+            },
+            'upcoming_festivals': list(upcoming_festivals),
+            'top_products_today': list(top_products_today),
+            'movements':          movements,
         })
 
+
+class AdminDashboardViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAdmin]   # เฉพาะ Admin เท่านั้น
+    http_method_names = ['get']
+    queryset = Product.objects.none()
+ 
+    @action(detail=False, methods=['get'])
+    def overview(self, request):
+        from zoneinfo import ZoneInfo
+        from datetime import time
+
+        # ── ตั้งค่า Timezone และช่วงเวลาวันนี้ ──────────────────
+        bangkok_tz = ZoneInfo('Asia/Bangkok')
+        now = timezone.now().astimezone(bangkok_tz)  # เวลาปัจจุบันในกรุงเทพ
+        today = now.date()
+        start = datetime.combine(today, time.min, tzinfo=bangkok_tz)  # 00:00:00 วันนี้
+        end = datetime.combine(today, time.max, tzinfo=bangkok_tz)    # 23:59:59 วันนี้
+
+        # ดึงสินค้าทั้งหมดที่ยังไม่ถูกลบจาก Model Product
+        products    = Product.objects.filter(is_deleted=False)
+        # รวมจำนวน stock ทั้งหมด
+        total_stock = products.aggregate(total=Sum("stock"))["total"] or 0
+ 
+        # ดึงสินค้าที่ stock เหลือน้อย (1-4 ชิ้น) จาก Model Product
+        low_qs = Product.objects.filter(is_deleted=False, stock__gt=0, stock__lt=5)
+ 
+        # นับสินค้าที่รับเข้าวันนี้ จาก Model Product
+        in_today = Product.objects.filter(
+            is_deleted=False,
+            created_at__gte=start,
+            created_at__lte=end
+        ).count()
+ 
+        # รวมจำนวนสินค้าที่เบิกออกวันนี้ จาก Model IssueLine
+        out_today = IssueLine.objects.filter(
+            issue__created_at__gte=start,
+            issue__created_at__lte=end
+        ).aggregate(total=Sum("qty"))["total"] or 0
+ 
+        # คำนวณมูลค่าสต็อกรวมทั้งหมด (ราคา x จำนวน)
+        total_inventory_value = sum(
+            float(p.selling_price or 0) * p.stock for p in products
+        )
+ 
+        # สร้างรายการสินค้าใกล้หมด พร้อมรูปภาพ
+        low_items = []
+        for p in low_qs.order_by("stock")[:10]:
+            img = request.build_absolute_uri(p.image.url) if p.image else None
+            low_items.append({
+                "id": p.id, "code": p.code, "name": p.name,
+                "stock": p.stock, "unit": p.unit, "image_url": img
+            })
+ 
+        # ดึงประวัติการเบิกสินค้าออกวันนี้ จาก Model IssueLine
+        all_mv = []
+        issued = IssueLine.objects.select_related("issue", "product").filter(
+            issue__created_at__gte=start, issue__created_at__lte=end
+        )
+        for l in issued:
+            all_mv.append({
+                'datetime': l.issue.created_at, 'id': f'out_{l.id}',
+                'date': l.issue.created_at.isoformat(),
+                'code': l.product.code, 'name': l.product.name,
+                'type': 'out', 'qty': l.qty
+            })
+ 
+        # ดึงสินค้าที่รับเข้าวันนี้ จาก Model Product
+        received = Product.objects.filter(
+            is_deleted=False, created_at__gte=start, created_at__lte=end
+        )
+        for p in received:
+            all_mv.append({
+                'datetime': p.created_at, 'id': f'in_{p.id}',
+                'date': p.created_at.isoformat(),
+                'code': p.code, 'name': p.name,
+                'type': 'in', 'qty': p.initial_stock or p.stock
+            })
+ 
+        # เรียงจากล่าสุดก่อน เอาแค่ 20 รายการ
+        all_mv.sort(key=lambda x: x['datetime'], reverse=True)
+        movements = [
+            {'id': m['id'], 'date': m['date'], 'code': m['code'],
+             'name': m['name'], 'type': m['type'], 'qty': m['qty']}
+            for m in all_mv[:20]
+        ]
+ 
+        # ดึงสถิติสินค้าแยกตามหมวดหมู่ จาก Model Product
+        cats = Product.objects.filter(is_deleted=False).values(
+            'category__name'
+        ).annotate(count=Count('id'), total_stock=Sum('stock')).order_by('-count')
+ 
+        cat_list = [
+            {'category': c['category__name'] or 'ไม่ระบุ',
+             'count': c['count'], 'total_stock': c['total_stock'] or 0}
+            for c in cats
+        ]
+ 
+        # ส่งข้อมูลทั้งหมดกลับไปให้ OverviewPage
+        return Response({
+            "total_products":        total_stock,
+            "low_stock_count":       low_qs.count(),
+            "in_today":              in_today,
+            "out_today":             out_today,
+            "total_inventory_value": round(total_inventory_value, 2),
+            "low_stock_items":       low_items,
+            "movements":             movements,
+            "category_stats":        cat_list
+        })
+
+    # ================================================================
+    # financial() — ข้อมูลการเงิน
+    # เรียกผ่าน GET /admin-dashboard/financial/
+    # ================================================================
     @action(detail=False, methods=['get'])
     def financial(self, request):
-        """ข้อมูลการเงิน"""
         products = Product.objects.filter(is_deleted=False)
+        # คำนวณมูลค่าสินค้าทั้งหมดที่ราคาขาย
         total_selling_value = sum(
             float(p.selling_price or 0) * p.stock
             for p in products
         )
         return Response({
             'total_selling_value': total_selling_value,
-            'total_products': products.count(),
+            'total_products': products.count(),                          # จำนวนสินค้าทั้งหมด
             'total_stock_items': (
-                products.aggregate(Sum('stock'))['stock__sum'] or 0
+                products.aggregate(Sum('stock'))['stock__sum'] or 0     # รวมสต็อกทั้งหมด
             )
         })
 
+    # ================================================================
+    # category_breakdown() — สถิติตามหมวดหมู่
+    # เรียกผ่าน GET /admin-dashboard/category-breakdown/
+    # ================================================================
     @action(detail=False, methods=['get'])
     def category_breakdown(self, request):
-        """สถิติตามหมวดหมู่"""
         categories = Category.objects.annotate(
-            product_count=Count('product'),
-            total_stock=Sum('product__stock')
+            product_count=Count('product'),         # นับจำนวนสินค้าในหมวดหมู่
+            total_stock=Sum('product__stock')       # รวมสต็อกในหมวดหมู่
         ).values('id', 'name', 'product_count', 'total_stock')
         return Response({'categories': list(categories)})
 
+    # ================================================================
+    # top_products() — สินค้าที่มีมูลค่าสต็อกสูงสุด
+    # เรียกผ่าน GET /admin-dashboard/top-products/
+    # ================================================================
     @action(detail=False, methods=['get'])
     def top_products(self, request):
-        """สินค้าขายดี"""
         top_products_data = Product.objects.filter(
-            is_deleted=False, stock__gt=0
+            is_deleted=False, stock__gt=0   # เฉพาะสินค้าที่ยังมีสต็อก
         ).annotate(
-            inventory_value=F('stock') * F('selling_price')
+            inventory_value=F('stock') * F('selling_price')  # คำนวณมูลค่า = stock x ราคา
         ).values(
             'id', 'code', 'name', 'stock',
             'selling_price', 'category__name'
-        ).order_by('-inventory_value')[:20]
+        ).order_by('-inventory_value')[:20]  # เรียงมูลค่าสูงไปต่ำ เอา 20 อันดับแรก
         return Response({'top_products': list(top_products_data)})
 
 
@@ -622,71 +662,76 @@ class CustomEventViewSet(viewsets.ModelViewSet):
     ระบบจัดการบันทึกส่วนตัว
     """
     serializer_class = CustomEventSerializer
-    permission_classes = [IsAuthenticated]
-    
+    permission_classes = [IsAuthenticated] # ต้อง login ก่อน
+
     def get_queryset(self):
         user = self.request.user
+        # ดึงงานที่สร้างเอง หรืองานที่ is_shared=True (แชร์ให้ทุกคน)
         return CustomEvent.objects.filter(
             Q(created_by=user) | Q(is_shared=True)
         ).distinct()
-    
+
     def perform_create(self, serializer):
         user = self.request.user
+        #CustomEvent.objects.create(created_by=request.user) ──
         if user.is_superuser or user.is_staff:
+            # Admin → สร้างงานและแชร์ให้ทุกคนเห็นอัตโนมัติ
             serializer.save(created_by=user, is_shared=True)
         else:
+            # พนักงาน → สร้างงานเป็นส่วนตัว
             serializer.save(created_by=user)
-    
+
     def perform_update(self, serializer):
         instance = self.get_object()
-        if (instance.created_by != self.request.user and 
+        # เช็คสิทธิ์ → แก้ไขได้เฉพาะงานที่ตัวเองสร้าง หรือเป็น Staff
+        if (instance.created_by != self.request.user and
             not self.request.user.is_staff):
-            from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("คุณไม่มีสิทธิ์แก้ไขรายการนี้")
         serializer.save()
-    
+
     def perform_destroy(self, instance):
-        if (instance.created_by != self.request.user and 
+        # เช็คสิทธิ์ → ลบได้เฉพาะงานที่ตัวเองสร้าง หรือเป็น Staff
+        if (instance.created_by != self.request.user and
             not self.request.user.is_staff):
-            from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("คุณไม่มีสิทธิ์ลบรายการนี้")
         instance.delete()
-    
+
     @action(detail=False, methods=['get'])
     def my_events(self, request):
+        # GET /custom-events/my_events/ → ดึงเฉพาะงานที่ตัวเองสร้าง
         queryset = CustomEvent.objects.filter(created_by=request.user)
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
-    
+
     @action(detail=False, methods=['get'])
     def calendar(self, request):
-        year = request.query_params.get('year')
+        # GET /custom-events/calendar/?year=xxx&month=xxx → ดึงงานตามเดือน/ปี
+        year  = request.query_params.get('year')
         month = request.query_params.get('month')
         queryset = self.get_queryset()
-        if year:
-            queryset = queryset.filter(date__year=year)
-        if month:
-            queryset = queryset.filter(date__month=month)
+        if year:  queryset = queryset.filter(date__year=year)
+        if month: queryset = queryset.filter(date__month=month)
         serializer = self.get_serializer(queryset, many=True)
         return Response({
-            'year': year,
-            'month': month,
+            'year': year, 'month': month,
             'events': serializer.data,
             'count': queryset.count()
         })
-    
+
     @action(detail=False, methods=['get'])
     def upcoming(self, request):
-        today = timezone.now().date()
+        # GET /custom-events/upcoming/ → ดึงงานที่จะมาถึง 10 รายการแรก
+        today    = timezone.now().date()
         queryset = self.get_queryset().filter(date__gte=today).order_by('date')[:10]
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
-    
+
     @action(detail=False, methods=['get'])
     def upcoming_shared(self, request):
-        today = timezone.now().date()
+        # GET /custom-events/upcoming_shared/ → ดึงเฉพาะงานที่แชร์และยังไม่ถึงวัน
+        today    = timezone.now().date()
         queryset = CustomEvent.objects.filter(
-            is_shared=True, date__gte=today 
+            is_shared=True, date__gte=today
         ).select_related('created_by').order_by('date')[:10]
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
@@ -762,96 +807,115 @@ def issue_products(request):
     """
     เบิกสินค้าออกจากคลัง
     """
+    # ดึง items จาก payload ที่ Frontend ส่งมา
     items = request.data.get("items", [])
+
+    # ถ้าไม่มี items → ส่ง error กลับทันที
     if not isinstance(items, list) or not items:
         return Response(
-            {"detail": "items is required"}, 
+            {"detail": "items is required"},
             status=status.HTTP_400_BAD_REQUEST
         )
 
+    #ถ้า error ตรงไหน → ยกเลิกทั้งหมด
     with transaction.atomic():
+
+        # ── Issue.objects.create() → สร้างใบเบิก 1 ใบ ──
         issue = Issue.objects.create(created_by=request.user)
         updated_products = []
 
+        # วนลูปสินค้าแต่ละรายการที่เบิก
         for it in items:
-            pid = int(it.get("product", 0) or 0)
-            qty = int(it.get("qty", 0) or 0)
+            pid = int(it.get("product", 0) or 0) # id สินค้า
+            qty = int(it.get("qty", 0) or 0)     # จำนวนที่เบิก
             if pid <= 0 or qty <= 0:
-                continue
+                continue # ข้ามถ้าข้อมูลไม่ถูกต้อง
 
             try:
+                # ดึงสินค้าจาก DB พร้อมล็อคไว้ ป้องกันคนอื่นแก้พร้อมกัน
                 p = Product.objects.select_for_update().get(
                     id=pid, is_deleted=False
                 )
             except ObjectDoesNotExist:
                 return Response(
-                    {"detail": f"product {pid} not found"}, 
+                    {"detail": f"product {pid} not found"},
                     status=status.HTTP_404_NOT_FOUND
                 )
 
+            # เช็คสต็อกพอไหม ถ้าไม่พอ → ส่ง error กลับ
             if p.stock < qty:
                 return Response(
-                    {"detail": f"stock not enough for product {p.code}"}, 
+                    {"detail": f"stock not enough for product {p.code}"},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
+            # หักสต็อก → product.stock -= qty (บันทึกลง DB)
             p.stock = F("stock") - qty
             p.on_sale = True
             p.save(update_fields=["stock", "on_sale"])
 
+            # ── IssueLine.objects.create() → สร้างรายการเบิกสินค้า ──
             IssueLine.objects.create(issue=issue, product=p, qty=qty)
 
+            # อัปเดต Listing — ถ้ายังไม่มี → สร้างใหม่, ถ้ามีแล้ว → เพิ่ม quantity
             listing, created = Listing.objects.get_or_create(
                 product=p,
                 defaults={
-                    "is_active": True, 
-                    "title": p.name, 
-                    "sale_price": p.selling_price, 
-                    "unit": p.unit, 
+                    "is_active": True,
+                    "title": p.name,
+                    "sale_price": p.selling_price,
+                    "unit": p.unit,
                     "quantity": qty
                 }
             )
             if not created:
+                # มี Listing อยู่แล้ว → เพิ่มจำนวน
                 listing.quantity = F("quantity") + qty
                 listing.is_active = True
                 listing.save(update_fields=["quantity", "is_active"])
 
+            # โหลดค่า stock ล่าสุดจาก DB หลังจากหักแล้ว
             p.refresh_from_db(fields=["stock", "on_sale"])
             updated_products.append(p)
-            
+
+            # ── แจ้งเตือน LINE ──────────────────────────────────────
             if LINE_AVAILABLE and line_service:
                 try:
                     settings_obj = NotificationSettings.objects.get(
                         user=request.user
                     )
                     user_id = settings_obj.line_user_id
-                    
+
                     if user_id:
                         issued_by = (
-                            request.user.get_full_name() or 
+                            request.user.get_full_name() or
                             request.user.username
                         )
+                        # แจ้งเตือนว่าเบิกสินค้าออก
                         line_service.send_stock_out_notification(
-                            user_id, p.name, p.code, qty, 
+                            user_id, p.name, p.code, qty,
                             p.unit, issued_by
                         )
 
+                        # ถ้าสต็อกหมด → แจ้งเตือนสินค้าหมด
                         if p.stock == 0:
                             line_service.send_out_of_stock_alert(
                                 user_id, p.name, p.code
                             )
+                        # ถ้าสต็อกใกล้หมด → แจ้งเตือนสินค้าใกล้หมด
                         elif p.stock < 5:
                             line_service.send_low_stock_alert(
-                                user_id, p.name, p.code, 
+                                user_id, p.name, p.code,
                                 p.stock, p.unit
                             )
                 except Exception as e:
                     print(f"Error sending LINE notification: {e}")
 
+    # ส่งข้อมูลสินค้าที่อัปเดตแล้วกลับไปให้ Frontend พร้อม 201 Created
     return Response(
         ProductSerializer(
-            updated_products, 
-            many=True, 
+            updated_products,
+            many=True,
             context={"request": request}
         ).data,
         status=status.HTTP_201_CREATED
@@ -1005,270 +1069,188 @@ def movement_history(request):
 
 # ==================== LINE MESSAGING API ====================
 
+# ==================== LINE WEBHOOK ====================
+
 @csrf_exempt
 def line_webhook(request):
-    print("🔥 WEBHOOK CALLED!")
-    
-    if not LINE_AVAILABLE: 
+    # รับ POST จาก LINE Server เมื่อมีคนส่งข้อความมาหา Bot
+    if not LINE_AVAILABLE:
         return HttpResponseBadRequest("LINE SDK not available")
-    
     if request.method != 'POST':
         return HttpResponseBadRequest("Only POST allowed")
-    
+
+    # ตรวจสอบ signature ว่ามาจาก LINE จริงไหม
     signature = request.META.get('HTTP_X_LINE_SIGNATURE', '')
     body = request.body.decode('utf-8')
-    
-    print(f"📩 Body: {body[:200]}")
-    
+
     try:
+        # ส่งให้ handler จัดการ → เรียก handle_text_message()
         line_service.handler.handle(body, signature)
     except InvalidSignatureError:
-        print("❌ Invalid signature")
-        return HttpResponseBadRequest("Invalid signature")
+        return HttpResponseBadRequest("Invalid signature") # signature ไม่ถูกต้อง
     except Exception as e:
-        print(f"❌ Webhook error: {e}")
         return HttpResponseBadRequest()
-    
+
     return HttpResponse('OK')
 
 
 if LINE_AVAILABLE and line_service:
     @line_service.handler.add(MessageEvent, message=TextMessage)
     def handle_text_message(event):
-        print("📩 MESSAGE RECEIVED!")
-        print(f"Text: {event.message.text}")
-        print(f"User ID: {event.source.user_id}")
-        
-        user_id = event.source.user_id
-        text = event.message.text.strip()
-        
+        # เรียกทุกครั้งที่มีคนส่งข้อความมาหา Bot
+        user_id = event.source.user_id   # LINE user id ของคนที่ส่ง
+        text = event.message.text.strip() # ข้อความที่ส่งมา
+
+        # ── กรณีที่ 1: พิมพ์รหัส 6 หลัก ──
         if len(text) == 6 and text.isdigit():
             try:
-                settings_obj = NotificationSettings.objects.get(
-                    verification_code=text
-                )
-                settings_obj.line_user_id = user_id
-                settings_obj.verification_code = None
+                # หา NotificationSettings ที่มี verification_code ตรงกัน
+                settings_obj = NotificationSettings.objects.get(verification_code=text)
+                settings_obj.line_user_id = user_id   # บันทึก line_user_id
+                settings_obj.verification_code = None  # ล้างรหัสทิ้ง
                 settings_obj.save()
-                
-                line_service.send_text_message(
-                    user_id,
-                    f"✅ เชื่อมต่อสำเร็จ!\n"
-                    f"สวัสดีคุณ {settings_obj.user.username}\n"
-                    f"ระบบพร้อมแจ้งเตือนแล้วครับ"
-                )
+                line_service.send_text_message(user_id, "✅ เชื่อมต่อสำเร็จ!")
             except NotificationSettings.DoesNotExist:
-                line_service.send_text_message(
-                    user_id, 
-                    "❌ รหัสไม่ถูกต้อง หรือหมดอายุแล้ว"
-                )
+                line_service.send_text_message(user_id, "❌ รหัสไม่ถูกต้อง หรือหมดอายุแล้ว")
             return
+
+        # ── กรณีที่ 2: พิมพ์ "เชื่อม username" ──
         if text.startswith('เชื่อม ') or text.startswith('เชื่อม'):
             parts = text.split(maxsplit=1)
             if len(parts) == 2:
                 username = parts[1].strip()
-                
                 try:
+                    # หา user จาก username ที่พิมพ์มา
                     target_user = User.objects.get(username=username)
-                    
-                    settings_obj, created = (
-                        NotificationSettings.objects.get_or_create(
-                            user=target_user
-                        )
+
+                    # สร้างหรือดึง NotificationSettings ของ user นั้น
+                    settings_obj, created = NotificationSettings.objects.get_or_create(
+                        user=target_user
                     )
-                    
-                    settings_obj.line_user_id = user_id
+                    settings_obj.line_user_id = user_id  # บันทึก line_user_id
                     settings_obj.verification_code = None
                     settings_obj.save()
-                    
+
+                    # ดึงชื่อ LINE จาก profile
                     display_name = "คุณ"
                     try:
-                        profile = line_service.line_bot_api.get_profile(
-                            user_id
-                        )
+                        profile = line_service.line_bot_api.get_profile(user_id)
                         display_name = profile.display_name
                     except:
                         pass
-                    
-                    line_service.send_text_message(
-                        user_id,
-                        f"""✅ เชื่อมต่อสำเร็จ!
 
-สวัสดี คุณ {display_name} 😊
-นี่คือบัญชีทางการของ ร้านทองศูนย์
-
-เราจะส่งข่าวสารล่าสุดผ่านบัญชีทางการนี้เป็นระยะ ❤️
-เตรียมรับได้เลย! 🎁🎉✨
-
-📱 บัญชี: {target_user.username}
-🔔 ระบบพร้อมแจ้งเตือนแล้ว!"""
-                    )
+                    line_service.send_text_message(user_id, f"✅ เชื่อมต่อสำเร็จ! สวัสดี {display_name}")
                     return
-                    
+
                 except User.DoesNotExist:
-                    line_service.send_text_message(
-                        user_id,
-                        f"❌ ไม่พบผู้ใช้ '{username}' ในระบบ\n"
-                        f"กรุณาตรวจสอบ username อีกครั้ง"
-                    )
+                    line_service.send_text_message(user_id, f"❌ ไม่พบผู้ใช้ '{username}'")
                     return
             else:
-                line_service.send_text_message(
-                    user_id,
-                    "📝 กรุณาพิมพ์: เชื่อม [username]\n"
-                    "ตัวอย่าง: เชื่อม maxnalao11"
-                )
+                line_service.send_text_message(user_id, "📝 กรุณาพิมพ์: เชื่อม [username]")
                 return
 
-        triggers = [
-            'ขอรหัส', 'รหัส', 'code', 'id', 
-            'userid', 'help', 'ช่วย'
-        ]
-        
+        # ── กรณีที่ 3: พิมพ์คำขอรหัส/help ──
+        triggers = ['ขอรหัส', 'รหัส', 'code', 'id', 'userid', 'help', 'ช่วย']
         if any(keyword in text.lower() for keyword in triggers):
-            msg = (
-                f"🆔 User ID ของคุณคือ:\n{user_id}\n\n"
-                "📋 วิธีเชื่อมต่อระบบ:\n"
-                "พิมพ์: เชื่อม [username ของคุณ]\n"
-                "ตัวอย่าง: เชื่อม maxnalao11"
-            )
-            line_service.send_text_message(user_id, msg)
+            line_service.send_text_message(user_id, f"🆔 User ID: {user_id}\nพิมพ์: เชื่อม [username]")
         else:
-            line_service.send_text_message(
-                user_id, 
-                "สวัสดีครับ! 👋\n\n"
-                "วิธีเชื่อมต่อระบบ:\n"
-                "พิมพ์: เชื่อม [username]\n"
-                "ตัวอย่าง: เชื่อม maxnalao11"
-            )
+            # ── กรณีอื่นๆ: แนะนำวิธีใช้ ──
+            line_service.send_text_message(user_id, "สวัสดีครับ! พิมพ์: เชื่อม [username]")
 
+
+# ==================== FBV LINE ENDPOINTS ====================
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_connection_code(request):
-    try:
-        settings_obj, created = (
-            NotificationSettings.objects.get_or_create(
-                user=request.user
-            )
-        )
-        
-        if settings_obj.line_user_id:
-            return Response({"connected": True})
-            
-        if not settings_obj.verification_code:
-            settings_obj.verification_code = ''.join(
-                random.choices(string.digits, k=6)
-            )
-            settings_obj.save()
-        
-        return Response({
-            "connected": False, 
-            "code": settings_obj.verification_code
-        })
-    except Exception as e:
-        return Response({"error": str(e)}, status=500)
+    # GET /line/get-connection-code/ → ดึงรหัส 6 หลักสำหรับเชื่อมต่อ
+    settings_obj, created = NotificationSettings.objects.get_or_create(user=request.user)
+
+    if settings_obj.line_user_id:
+        return Response({"connected": True}) # เชื่อมต่อแล้ว
+
+    # ถ้ายังไม่มีรหัส → สร้างรหัส 6 หลักใหม่
+    if not settings_obj.verification_code:
+        settings_obj.verification_code = ''.join(random.choices(string.digits, k=6))
+        settings_obj.save()
+
+    return Response({"connected": False, "code": settings_obj.verification_code})
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_line_user_id(request):
+    # GET /line/get-user-id/ → เช็คว่า user เชื่อมต่อ LINE แล้วไหม
     try:
-        settings_obj = NotificationSettings.objects.get(
-            user=request.user
-        )
-        has_id = bool(settings_obj.line_user_id)
-        return Response({
-            "has_user_id": has_id, 
-            "masked_user_id": "CONNECTED" if has_id else ""
-        })
+        settings_obj = NotificationSettings.objects.get(user=request.user)
+        has_id = bool(settings_obj.line_user_id) # มี → True / ไม่มี → False
+        return Response({"has_user_id": has_id, "masked_user_id": "CONNECTED" if has_id else ""})
     except NotificationSettings.DoesNotExist:
-        return Response({
-            "has_user_id": False, 
-            "masked_user_id": ""
-        })
+        return Response({"has_user_id": False, "masked_user_id": ""})
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_connected_users(request):
-    try:
-        connected_settings = NotificationSettings.objects.filter(
-            line_user_id__isnull=False
-        ).exclude(line_user_id='').select_related('user')
-        
-        users = []
-        for setting in connected_settings:
-            user_data = {
-                'id': setting.user.id,
-                'username': setting.user.username,
-                'email': setting.user.email,
-                'display_name': None,
-                'picture_url': None,
-                'connected_at': (
-                    setting.updated_at.isoformat() 
-                    if hasattr(setting, 'updated_at') 
-                    else None
-                )
-            }
-            
-            if LINE_AVAILABLE and line_service:
-                try:
-                    profile_result = line_service.get_profile(
-                        setting.line_user_id
-                    )
-                    if profile_result.get('success'):
-                        user_data['display_name'] = (
-                            profile_result['data'].get('display_name')
-                        )
-                        user_data['picture_url'] = (
-                            profile_result['data'].get('picture_url')
-                        )
-                except Exception as e:
-                    print(
-                        f"Error getting profile for "
-                        f"{setting.user.username}: {e}"
-                    )
-            
-            if not user_data['display_name']:
-                user_data['display_name'] = (
-                    setting.user.get_full_name() or 
-                    setting.user.username
-                )
-            
-            users.append(user_data)
-        
-        return Response({
-            'count': len(users),
-            'users': users
-        })
-    except Exception as e:
-        return Response({'error': str(e)}, status=500)
+    # GET /line/connected-users/ → ดึงรายชื่อทุกคนที่เชื่อมต่อ LINE แล้ว
+    connected_settings = NotificationSettings.objects.filter(
+        line_user_id__isnull=False  # มี line_user_id
+    ).exclude(line_user_id='').select_related('user')
+
+    users = []
+    for setting in connected_settings:
+        user_data = {
+            'id': setting.user.id,
+            'username': setting.user.username,
+            'email': setting.user.email,
+            'display_name': None,
+            'picture_url': None,
+        }
+
+        # ดึง display_name และ picture_url จาก LINE API
+        if LINE_AVAILABLE and line_service:
+            try:
+                profile_result = line_service.get_profile(setting.line_user_id)
+                if profile_result.get('success'):
+                    user_data['display_name'] = profile_result['data'].get('display_name')
+                    user_data['picture_url']  = profile_result['data'].get('picture_url')
+            except Exception as e:
+                print(f"Error getting profile: {e}")
+
+        # ถ้าไม่มีชื่อจาก LINE → ใช้ชื่อจาก DB แทน
+        if not user_data['display_name']:
+            user_data['display_name'] = setting.user.get_full_name() or setting.user.username
+
+        users.append(user_data)
+
+    return Response({'count': len(users), 'users': users})
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def send_to_selected_users(request):
+    # POST /line/send-to-users/ → ส่งข้อความหาผู้รับที่เลือก
     if not LINE_AVAILABLE or not line_service:
         return Response({"error": "LINE service unavailable"}, status=503)
-    
-    user_ids = request.data.get('user_ids', [])
-    message = request.data.get('message', '🔔 ข้อความจากระบบ EasyStock')
-    
+
+    user_ids = request.data.get('user_ids', [])  # รายชื่อผู้รับที่เลือก
+    message  = request.data.get('message', '🔔 ข้อความจากระบบ EasyStock')
+
     if not user_ids:
         return Response({"error": "No users selected"}, status=400)
-    
+
     sent_count = 0
     failed_count = 0
     errors = []
-    
+
+    # วนลูปส่งข้อความทีละคน
     for user_id in user_ids:
         try:
             setting = NotificationSettings.objects.get(user_id=user_id)
             if setting.line_user_id:
                 result = line_service.send_text_message(setting.line_user_id, message)
                 if result.get('success'):
-                    sent_count += 1
+                    sent_count += 1  # ส่งสำเร็จ
                 else:
                     failed_count += 1
                     errors.append(f"User {user_id}: {result.get('error')}")
@@ -1277,36 +1259,30 @@ def send_to_selected_users(request):
                 errors.append(f"User {user_id}: No LINE ID")
         except NotificationSettings.DoesNotExist:
             failed_count += 1
-            errors.append(f"User {user_id}: Settings not found")
-        except Exception as e:
-            failed_count += 1
-            errors.append(f"User {user_id}: {str(e)}")
-    
-    return Response({
-        'success': True,
-        'sent_count': sent_count,
-        'failed_count': failed_count,
-        'errors': errors if errors else None
-    })
+
+    return Response({'success': True, 'sent_count': sent_count, 'failed_count': failed_count})
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def broadcast_message(request):
+    # POST /line/broadcast/ → ส่งข้อความหาทุกคนที่เชื่อมต่อ LINE
     if not LINE_AVAILABLE or not line_service:
         return Response({"error": "LINE service unavailable"}, status=503)
-    
+
     message = request.data.get('message')
     if not message:
         return Response({"error": "Message is required"}, status=400)
-    
+
+    # ดึงทุกคนที่มี line_user_id
     connected_settings = NotificationSettings.objects.filter(
         line_user_id__isnull=False
     ).exclude(line_user_id='')
-    
+
     sent_count = 0
     failed_count = 0
-    
+
+    # วนลูปส่งหาทุกคน
     for setting in connected_settings:
         try:
             result = line_service.send_text_message(setting.line_user_id, message)
@@ -1316,24 +1292,19 @@ def broadcast_message(request):
                 failed_count += 1
         except Exception as e:
             failed_count += 1
-            print(f"Broadcast error for user {setting.user.username}: {e}")
-    
-    return Response({
-        'success': True,
-        'sent_count': sent_count,
-        'failed_count': failed_count,
-        'total': connected_settings.count()
-    })
+
+    return Response({'success': True, 'sent_count': sent_count, 'failed_count': failed_count, 'total': connected_settings.count()})
 
 
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def delete_line_user_id(request):
+    # DELETE /line/delete-user-id/ → ยกเลิกการเชื่อมต่อ LINE ของตัวเอง
     try:
         settings_obj = NotificationSettings.objects.get(user=request.user)
-        settings_obj.line_user_id = None
+        settings_obj.line_user_id = None  # ลบ line_user_id ออก
         settings_obj.save()
-    except NotificationSettings.DoesNotExist: 
+    except NotificationSettings.DoesNotExist:
         pass
     return Response({"success": True})
 
@@ -1341,14 +1312,13 @@ def delete_line_user_id(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def send_test_message(request):
+    # POST /line/send-test/ → ส่งข้อความทดสอบหาตัวเอง
     if not LINE_AVAILABLE or not line_service:
         return Response({"error": "LINE service unavailable"}, status=503)
-    
     try:
         settings_obj = NotificationSettings.objects.get(user=request.user)
         if not settings_obj.line_user_id:
             return Response({"error": "LINE not connected"}, status=400)
-        
         result = line_service.send_test_message(settings_obj.line_user_id)
         if result.get('success'):
             return Response({"success": True, "message": "Test message sent"})
@@ -1356,30 +1326,28 @@ def send_test_message(request):
             return Response({"error": result.get('error')}, status=500)
     except NotificationSettings.DoesNotExist:
         return Response({"error": "Notification settings not found"}, status=404)
-    except Exception as e:
-        return Response({"error": str(e)}, status=500)
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def send_low_stock_alerts(request):
-    if not LINE_AVAILABLE: 
+    # POST /line/send-low-stock/ → ส่งแจ้งเตือนสินค้าใกล้หมดหาตัวเอง
+    if not LINE_AVAILABLE:
         return Response({"error": "Service unavailable"}, status=503)
-    
     try:
         settings_obj = NotificationSettings.objects.get(user=request.user)
-        if not settings_obj.line_user_id: 
+        if not settings_obj.line_user_id:
             return Response({"error": "No Line ID"}, status=400)
-        
+
+        # ดึงสินค้าที่ stock < 5 ทั้งหมด
         low_stock = Product.objects.filter(is_deleted=False, stock__lt=5, stock__gt=0)
         cnt = 0
         for p in low_stock:
             res = line_service.send_low_stock_alert(
                 settings_obj.line_user_id, p.name, p.code, p.stock, p.unit
             )
-            if res.get('success'): 
+            if res.get('success'):
                 cnt += 1
-        
         return Response({"success": True, "count": cnt})
     except Exception as e:
         return Response({"error": str(e)}, status=500)
@@ -1388,16 +1356,15 @@ def send_low_stock_alerts(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_line_profile(request):
+    # GET /line/profile/ → ดึงข้อมูล LINE profile ของตัวเอง
     try:
         settings_obj = NotificationSettings.objects.get(user=request.user)
-        if not settings_obj.line_user_id: 
+        if not settings_obj.line_user_id:
             return Response({"error": "No ID"}, status=400)
         res = line_service.get_profile(settings_obj.line_user_id)
         return Response(res['data'] if res.get('success') else res)
     except Exception as e:
         return Response({"error": str(e)}, status=500)
-
-
 
 # ==================== TOP PRODUCTS (สินค้าขายดี) ====================
 

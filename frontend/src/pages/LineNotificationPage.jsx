@@ -6,33 +6,33 @@ import api from "../api";
 export default function LineNotificationPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [connectedUsers, setConnectedUsers] = useState([]);
-  const [selectedUsers, setSelectedUsers] = useState([]);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [isCurrentUserConnected, setIsCurrentUserConnected] = useState(false);
-  const [sendingTest, setSendingTest] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [connectedUsers, setConnectedUsers] = useState([]);    // รายชื่อผู้เชื่อมต่อ LINE ทั้งหมด
+  const [selectedUsers, setSelectedUsers] = useState([]);      // ผู้รับที่เลือกไว้
+  const [currentUser, setCurrentUser] = useState(null);        // user ที่ login อยู่
+  const [isCurrentUserConnected, setIsCurrentUserConnected] = useState(false); // เชื่อมต่อ LINE แล้วหรือยัง
+  const [sendingTest, setSendingTest] = useState(false);       // กำลังส่งข้อความอยู่ไหม
+  const [searchTerm, setSearchTerm] = useState("");            // คำค้นหาผู้รับ
 
-  // ✅ ลิงก์บอทของคุณ
-  const YOUR_LINE_LINK = "https://lin.ee/zARDyzU";
+  const YOUR_LINE_LINK = "https://lin.ee/zARDyzU"; // ลิงก์เพิ่มเพื่อน LINE Bot
 
+  // ── โหลดข้อมูลตอนเปิดหน้า + ทุก 5 วินาที ──
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 5000);
-    return () => clearInterval(interval);
+    const interval = setInterval(loadData, 5000); // refresh ทุก 5 วินาที
+    return () => clearInterval(interval); // ล้าง interval ตอนปิดหน้า
   }, []);
 
   const loadData = async () => {
     try {
-      // ดึงข้อมูล user ปัจจุบัน
+      // GET /auth/user/ → ProfileView → ดึงข้อมูล user ปัจจุบัน
       const { data: profile } = await api.get("/auth/user/");
       setCurrentUser(profile);
 
-      // เช็คว่า user ปัจจุบันเชื่อมต่อ LINE หรือยัง
+      // GET /line/get-user-id/ → get_line_user_id() → เช็คว่าเชื่อมต่อ LINE หรือยัง
       const { data: status } = await api.get("/line/get-user-id/");
       setIsCurrentUserConnected(status.has_user_id);
 
-      // ดึงรายชื่อทุกคนที่เชื่อมต่อ LINE แล้ว
+      // GET /line/connected-users/ → get_connected_users() → ดึงรายชื่อทุกคนที่เชื่อมต่อ LINE
       const { data: users } = await api.get("/line/connected-users/");
       setConnectedUsers(users.users || []);
     } catch (err) {
@@ -42,30 +42,35 @@ export default function LineNotificationPage() {
     }
   };
 
+  // เลือก/ยกเลิกเลือกผู้รับทีละคน
   const handleSelectUser = (userId) => {
     setSelectedUsers((prev) =>
       prev.includes(userId)
-        ? prev.filter((id) => id !== userId)
-        : [...prev, userId]
+        ? prev.filter((id) => id !== userId) // มีอยู่แล้ว → ยกเลิก
+        : [...prev, userId]                  // ไม่มี → เพิ่ม
     );
   };
 
+  // เลือก/ยกเลิกทั้งหมด
   const handleSelectAll = () => {
     if (selectedUsers.length === connectedUsers.length) {
-      setSelectedUsers([]);
+      setSelectedUsers([]); // ยกเลิกทั้งหมด
     } else {
-      setSelectedUsers(connectedUsers.map((u) => u.id));
+      setSelectedUsers(connectedUsers.map((u) => u.id)); // เลือกทั้งหมด
     }
   };
 
+  // ── กดส่งข้อความทดสอบ ──
   const handleSendTestToSelected = async () => {
+    // เช็คว่าเลือกผู้รับแล้วไหม
     if (selectedUsers.length === 0) {
       alert("กรุณาเลือกผู้รับอย่างน้อย 1 คน");
       return;
     }
-
     setSendingTest(true);
     try {
+      // POST /line/send-to-users/ → send_to_selected_users()
+      // → NotificationSettings.get() → line_service.send_text_message()
       const { data } = await api.post("/line/send-to-users/", {
         user_ids: selectedUsers,
         message: "🔔 ทดสอบการแจ้งเตือนจากระบบ EasyStock",
@@ -78,25 +83,28 @@ export default function LineNotificationPage() {
     }
   };
 
+  // ── ยกเลิกการเชื่อมต่อ LINE ──
   const handleDisconnect = async () => {
     if (!window.confirm("คุณต้องการยกเลิกการเชื่อมต่อ LINE ใช่หรือไม่?")) return;
     try {
+      // DELETE /line/delete-user-id/ → delete_line_user_id() → ลบ line_user_id ออก
       await api.delete("/line/delete-user-id/");
       setIsCurrentUserConnected(false);
-      loadData();
+      loadData(); // โหลดข้อมูลใหม่
       alert("ยกเลิกการเชื่อมต่อแล้ว");
     } catch (err) {
-      console.error("Disconnect error:", err);
       alert("เกิดข้อผิดพลาด");
     }
   };
 
+  // กรองรายชื่อผู้รับตามคำค้นหา (Client-side)
   const filteredUsers = connectedUsers.filter(
     (user) =>
       user.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.display_name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // แสดง loading spinner ขณะโหลดข้อมูล
   if (loading) {
     return (
       <div className="p-8 text-center text-gray-500">
@@ -108,12 +116,10 @@ export default function LineNotificationPage() {
 
   return (
     <section className="max-w-4xl mx-auto space-y-6 p-4">
-      {/* Header */}
+
+      {/* Header + ปุ่มย้อนกลับ */}
       <div className="flex items-center gap-4 mb-6">
-        <button
-          onClick={() => navigate(-1)}
-          className="w-10 h-10 bg-white border rounded-lg flex items-center justify-center hover:bg-gray-50 transition-colors shadow-sm"
-        >
+        <button onClick={() => navigate(-1)} className="w-10 h-10 bg-white border rounded-lg flex items-center justify-center hover:bg-gray-50 transition-colors shadow-sm">
           <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
@@ -124,7 +130,7 @@ export default function LineNotificationPage() {
         </div>
       </div>
 
-      {/* Stats Cards */}
+      {/* Stats Cards — แสดง 3 ค่า: จำนวนเชื่อมต่อ, เลือกแล้ว, สถานะของตัวเอง */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
           <div className="flex items-center gap-3">
@@ -139,7 +145,6 @@ export default function LineNotificationPage() {
             </div>
           </div>
         </div>
-
         <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
@@ -153,7 +158,7 @@ export default function LineNotificationPage() {
             </div>
           </div>
         </div>
-
+        {/* สถานะ LINE ของ user ปัจจุบัน — เขียว=เชื่อมแล้ว, เหลือง=ยังไม่เชื่อม */}
         <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
           <div className="flex items-center gap-3">
             <div className={`w-12 h-12 rounded-full flex items-center justify-center ${isCurrentUserConnected ? 'bg-green-100' : 'bg-yellow-100'}`}>
@@ -171,12 +176,13 @@ export default function LineNotificationPage() {
         </div>
       </div>
 
-      {/* Connection Section - แสดงเฉพาะเมื่อยังไม่เชื่อมต่อ */}
+      {/* แสดง QR Code + วิธีเชื่อมต่อ เฉพาะเมื่อยังไม่เชื่อมต่อ LINE */}
       {!isCurrentUserConnected && (
         <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-2xl border border-green-200 p-6">
           <div className="flex flex-col md:flex-row gap-6 items-center">
             <div className="flex-shrink-0">
               <div className="bg-white p-3 rounded-xl shadow-sm">
+                {/* QR Code สร้างจาก URL ของ LINE Bot */}
                 <img
                   src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(YOUR_LINE_LINK)}`}
                   alt="LINE QR Code"
@@ -186,22 +192,14 @@ export default function LineNotificationPage() {
             </div>
             <div className="flex-1 text-center md:text-left">
               <h3 className="text-lg font-bold text-gray-800 mb-2">เชื่อมต่อบัญชีของคุณ</h3>
-              <p className="text-sm text-gray-600 mb-3">
-                สแกน QR Code หรือคลิกปุ่มเพื่อเพิ่มเพื่อน แล้วพิมพ์:
-              </p>
+              <p className="text-sm text-gray-600 mb-3">สแกน QR Code หรือคลิกปุ่มเพื่อเพิ่มเพื่อน แล้วพิมพ์:</p>
+              {/* แสดง username ของ user ปัจจุบันสำหรับพิมพ์เชื่อมต่อ */}
               <div className="inline-block bg-white border-2 border-green-300 rounded-lg px-4 py-2 font-mono text-green-700 font-bold mb-3">
                 เชื่อม {currentUser?.username || '[username]'}
               </div>
               <div>
-                <a
-                  href={YOUR_LINE_LINK}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm font-medium transition-colors"
-                >
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.63-.63h2.386c.346 0 .627.285.627.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.63-.63.346 0 .628.285.628.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.282.629-.629.629M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314"/>
-                  </svg>
+                <a href={YOUR_LINE_LINK} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm font-medium transition-colors">
                   เพิ่มเพื่อน LINE Bot
                 </a>
               </div>
@@ -210,7 +208,7 @@ export default function LineNotificationPage() {
         </div>
       )}
 
-      {/* Connected Users List */}
+      {/* รายชื่อผู้เชื่อมต่อ LINE ทั้งหมด */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-gray-100">
           <div className="flex flex-col sm:flex-row gap-3 justify-between items-start sm:items-center">
@@ -218,6 +216,7 @@ export default function LineNotificationPage() {
               👥 รายชื่อผู้เชื่อมต่อ LINE ({connectedUsers.length} คน)
             </h2>
             <div className="flex gap-2 w-full sm:w-auto">
+              {/* ช่องค้นหา — กรองฝั่ง Client-side ไม่ยิง API */}
               <input
                 type="text"
                 placeholder="ค้นหา..."
@@ -225,10 +224,8 @@ export default function LineNotificationPage() {
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="flex-1 sm:w-48 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              <button
-                onClick={handleSelectAll}
-                className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 transition-colors whitespace-nowrap"
-              >
+              {/* ปุ่มเลือก/ยกเลิกทั้งหมด */}
+              <button onClick={handleSelectAll} className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 transition-colors whitespace-nowrap">
                 {selectedUsers.length === connectedUsers.length ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด'}
               </button>
             </div>
@@ -236,32 +233,25 @@ export default function LineNotificationPage() {
         </div>
 
         {filteredUsers.length === 0 ? (
+          // ไม่มีผู้เชื่อมต่อ
           <div className="p-8 text-center text-gray-500">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
-            </div>
             <p className="font-medium">ยังไม่มีผู้เชื่อมต่อ LINE</p>
             <p className="text-sm mt-1">แชร์ลิงก์ให้ทีมงานเพื่อเชื่อมต่อ</p>
           </div>
         ) : (
+          // วนลูปแสดงรายชื่อผู้เชื่อมต่อ
           <div className="divide-y divide-gray-100 max-h-96 overflow-y-auto">
             {filteredUsers.map((user) => (
-              <div
-                key={user.id}
-                onClick={() => handleSelectUser(user.id)}
+              // กดที่แถว → เลือก/ยกเลิกเลือกผู้รับ
+              <div key={user.id} onClick={() => handleSelectUser(user.id)}
                 className={`flex items-center gap-4 p-4 cursor-pointer transition-colors ${
                   selectedUsers.includes(user.id)
-                    ? 'bg-blue-50 border-l-4 border-blue-500'
+                    ? 'bg-blue-50 border-l-4 border-blue-500' // เลือกอยู่ → สีน้ำเงิน
                     : 'hover:bg-gray-50 border-l-4 border-transparent'
-                }`}
-              >
-                {/* Checkbox */}
+                }`}>
+                {/* Checkbox วงกลม */}
                 <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
-                  selectedUsers.includes(user.id)
-                    ? 'bg-blue-500 border-blue-500'
-                    : 'border-gray-300'
+                  selectedUsers.includes(user.id) ? 'bg-blue-500 border-blue-500' : 'border-gray-300'
                 }`}>
                   {selectedUsers.includes(user.id) && (
                     <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -269,27 +259,19 @@ export default function LineNotificationPage() {
                     </svg>
                   )}
                 </div>
-
-                {/* Avatar */}
+                {/* Avatar — ถ้ามีรูปจาก LINE ใช้รูป / ถ้าไม่มีใช้ตัวอักษรแรก */}
                 <div className="w-12 h-12 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center text-white font-bold text-lg shadow-sm overflow-hidden">
-                  {user.picture_url ? (
-                    <img src={user.picture_url} alt={user.display_name} className="w-full h-full object-cover" />
-                  ) : (
-                    user.display_name?.charAt(0) || user.username?.charAt(0) || '?'
-                  )}
+                  {user.picture_url
+                    ? <img src={user.picture_url} alt={user.display_name} className="w-full h-full object-cover" />
+                    : user.display_name?.charAt(0) || user.username?.charAt(0) || '?'
+                  }
                 </div>
-
-                {/* Info */}
+                {/* ชื่อและ username */}
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-gray-800 truncate">
-                    {user.display_name || user.username}
-                  </p>
-                  <p className="text-sm text-gray-500 truncate">
-                    @{user.username}
-                  </p>
+                  <p className="font-medium text-gray-800 truncate">{user.display_name || user.username}</p>
+                  <p className="text-sm text-gray-500 truncate">@{user.username}</p>
                 </div>
-
-                {/* Status */}
+                {/* badge เชื่อมต่อแล้ว */}
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 bg-green-500 rounded-full"></span>
                   <span className="text-xs text-green-600 font-medium">เชื่อมต่อแล้ว</span>
@@ -299,59 +281,47 @@ export default function LineNotificationPage() {
           </div>
         )}
 
-        {/* Action Bar */}
+        {/* Action Bar — ปุ่มส่งข้อความทดสอบ */}
         {connectedUsers.length > 0 && (
           <div className="p-4 bg-gray-50 border-t border-gray-100">
             <div className="flex flex-col sm:flex-row gap-3 justify-between items-center">
               <p className="text-sm text-gray-600">
                 เลือกแล้ว <span className="font-bold text-blue-600">{selectedUsers.length}</span> จาก {connectedUsers.length} คน
               </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleSendTestToSelected}
-                  disabled={selectedUsers.length === 0 || sendingTest}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-                    selectedUsers.length === 0
-                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                      : 'bg-blue-600 text-white hover:bg-blue-700'
-                  }`}
-                >
-                  {sendingTest ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      กำลังส่ง...
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                      </svg>
-                      ส่งข้อความทดสอบ
-                    </>
-                  )}
-                </button>
-              </div>
+              {/* ปุ่มส่ง — disabled ถ้าไม่ได้เลือกผู้รับ */}
+              <button onClick={handleSendTestToSelected}
+                disabled={selectedUsers.length === 0 || sendingTest}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+                  selectedUsers.length === 0 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}>
+                {sendingTest ? (
+                  <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>กำลังส่ง...</>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                    ส่งข้อความทดสอบ
+                  </>
+                )}
+              </button>
             </div>
           </div>
         )}
       </div>
 
-      {/* Settings Section - แสดงเฉพาะเมื่อเชื่อมต่อแล้ว */}
+      {/* ปุ่มยกเลิกการเชื่อมต่อ — แสดงเฉพาะเมื่อเชื่อมต่อแล้ว */}
       {isCurrentUserConnected && (
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
           <h3 className="font-bold text-gray-800 mb-4">⚙️ การตั้งค่าของคุณ</h3>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <button
-              onClick={handleDisconnect}
-              className="px-4 py-2 bg-red-50 border border-red-200 text-red-600 rounded-lg hover:bg-red-100 text-sm font-medium transition-colors"
-            >
-              ยกเลิกการเชื่อมต่อ LINE ของฉัน
-            </button>
-          </div>
+          <button onClick={handleDisconnect}
+            className="px-4 py-2 bg-red-50 border border-red-200 text-red-600 rounded-lg hover:bg-red-100 text-sm font-medium transition-colors">
+            ยกเลิกการเชื่อมต่อ LINE ของฉัน
+          </button>
         </div>
       )}
 
-      {/* Info Card */}
+      {/* Info Card — แสดงว่าระบบแจ้งเตือนอะไรบ้างอัตโนมัติ */}
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
         <div className="flex items-start gap-3">
           <svg className="w-6 h-6 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -359,9 +329,7 @@ export default function LineNotificationPage() {
           </svg>
           <div>
             <h3 className="font-semibold text-blue-900 mb-2">การแจ้งเตือนอัตโนมัติ</h3>
-            <p className="text-sm text-blue-800 mb-2">
-              ระบบจะส่งแจ้งเตือนให้ <strong>ทุกคน</strong> ที่เชื่อมต่อ LINE เมื่อ:
-            </p>
+            <p className="text-sm text-blue-800 mb-2">ระบบจะส่งแจ้งเตือนให้ <strong>ทุกคน</strong> ที่เชื่อมต่อ LINE เมื่อ:</p>
             <ul className="text-sm text-blue-800 space-y-1">
               <li>• สินค้าใกล้หมด (&lt; 5 ชิ้น)</li>
               <li>• สินค้าหมดสต็อก</li>
@@ -371,6 +339,7 @@ export default function LineNotificationPage() {
           </div>
         </div>
       </div>
+
     </section>
   );
 }

@@ -16,7 +16,6 @@ import StockPage from "./pages/StockPage.jsx";
 import OverviewPage from "./pages/OverviewPage.jsx";
 import TaskManagementPage from "./pages/TaskManagementPage.jsx";
 import UsersPage from "./pages/UsersPage.jsx";
-import StockReceivePage from "./pages/StockReceivePage.jsx";
 import StockIssuePage from "./pages/StockIssuePage.jsx";
 import EmployeeDashboard from "./pages/EmployeeDashboard.jsx";
 
@@ -50,7 +49,6 @@ export default function App() {
             <Route path="dashboard" element={<EmployeeDashboard />} />
             <Route path="products" element={<ProductsPage />} />
             <Route path="stock" element={<StockPage />} />
-            <Route path="stock/receive" element={<StockReceivePage />} />
             <Route path="history" element={<HistoryPage />} />
             <Route path="task-management" element={<TaskManagementPage />} />
             <Route path="tasks" element={<TaskListPage />} />

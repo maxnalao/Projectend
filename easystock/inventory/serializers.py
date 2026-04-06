@@ -220,37 +220,37 @@ class TaskSerializer(serializers.ModelSerializer):
 
 # ================ CustomEvent Serializer ================
 class CustomEventSerializer(serializers.ModelSerializer):
+
+    # ── field พิเศษที่ไม่มีใน Model → คำนวณเองจากฟังก์ชัน ──
     created_by_name = serializers.SerializerMethodField()
+    # แทนที่จะส่งแค่ created_by = 1 (id) → ส่งชื่อคนสร้างด้วย
+
     priority_display = serializers.CharField(
-        source='get_priority_display', 
-        read_only=True
+        source='get_priority_display', read_only=True
     )
-    
+    # แปลง priority จาก "high" → "สูง" ให้อ่านง่ายขึ้น
+
     class Meta:
         model = CustomEvent
+        # field ที่จะส่งกลับไปใน JSON
         fields = [
-            'id', 
-            'title', 
-            'date', 
-            'event_type',
-            'priority',
-            'priority_display',
-            'notes', 
-            'is_shared',
-            'created_by',
-            'created_by_name',
-            'created_at',
-            'updated_at'
-        ]
-        read_only_fields = [
-            'id', 'created_by', 'created_by_name', 
+            'id', 'title', 'date', 'event_type',
+            'priority', 'priority_display',  # ส่งทั้ง "high" และ "สูง"
+            'notes', 'is_shared',
+            'created_by', 'created_by_name', # ส่งทั้ง id และชื่อ
             'created_at', 'updated_at'
         ]
-    
+        # field เหล่านี้อ่านอย่างเดียว แก้ไขไม่ได้
+        read_only_fields = [
+            'id', 'created_by', 'created_by_name',
+            'created_at', 'updated_at'
+        ]
+
     def get_created_by_name(self, obj):
+        # obj = CustomEvent object ที่กำลังแปลงอยู่
         if obj.created_by:
             return (
-                obj.created_by.get_full_name() or 
-                obj.created_by.username
+                obj.created_by.get_full_name() # ถ้ามีชื่อ-นามสกุล → ใช้เลย
+                or obj.created_by.username     # ถ้าไม่มี → ใช้ username แทน
             )
-        return None
+        return None # ถ้าไม่มีผู้สร้าง → ส่ง null

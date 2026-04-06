@@ -1,53 +1,62 @@
 // frontend/src/pages/Login.jsx
 import { useState } from "react";
-import axios from "axios";
+import axios from "axios";                          // ใช้ axios ตรง ไม่ผ่าน api.js เพราะยังไม่มี token
 import { useNavigate, Link } from "react-router-dom";
-import { useUser } from "../context/UserContext"; 
+import { useUser } from "../context/UserContext";   // Context สำหรับเก็บข้อมูล user ทั่วทั้งแอป
 
+// BASE URL สำหรับ auth endpoints → http://127.0.0.1:8000/api/auth
 const AUTH_BASE =
   (import.meta.env.VITE_API || "http://127.0.0.1:8000/api") + "/auth";
 
 export default function Login() {
   const navigate = useNavigate();
-  const { refreshUser, setUser } = useUser(); 
-  const [form, setForm] = useState({ username: "", password: "" });
-  const [showPw, setShowPw] = useState(false);
-  const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(false);
+  const { refreshUser, setUser } = useUser(); // refreshUser = โหลดข้อมูล user ใหม่, setUser = set user ใน Context
 
+  // ── State ──────────────────────────────────────────────────
+  const [form, setForm] = useState({ username: "", password: "" }); // ข้อมูลฟอร์ม
+  const [showPw, setShowPw] = useState(false);   // แสดง/ซ่อนรหัสผ่าน
+  const [err, setErr] = useState("");            // ข้อความ error
+  const [loading, setLoading] = useState(false); // สถานะกำลัง login
+
+  // ── ส่งข้อมูล Login ────────────────────────────────────────
   const submit = async (e) => {
     e.preventDefault();
     setErr("");
     setLoading(true);
-    
+
     try {
-      // ✅ 1. เคลียร์ข้อมูลเก่าก่อน login
-      localStorage.clear();
-      setUser(null);
-      
-      // ✅ 2. Login
+      // 1. เคลียร์ข้อมูลเก่าก่อน login ใหม่
+      localStorage.clear();  // ล้าง token เก่าออก
+      setUser(null);         // reset user ใน Context
+
+      // 2. ส่ง POST /auth/login/ → LoginView → ตรวจสอบ username/password
+      //    LoginView จะค้นหา user จาก email หรือ username แล้ว check_password()
       const { data } = await axios.post(`${AUTH_BASE}/login/`, form);
-      localStorage.setItem("access", data.access);
-      localStorage.setItem("refresh", data.refresh);
-      
-      // ✅ 3. โหลดข้อมูล user ใหม่และรอให้เสร็จ
+
+      // 3. เก็บ JWT token ลง localStorage
+      localStorage.setItem("access", data.access);   // access token สำหรับเรียก API
+      localStorage.setItem("refresh", data.refresh); // refresh token สำหรับต่ออายุ access token
+
+      // 4. โหลดข้อมูล user ใหม่เข้า Context (refreshUser ใช้ access token ที่เพิ่ง save)
       await refreshUser();
-      
-      // ✅ 4. ดึงข้อมูล user จาก API เพื่อเช็ค role
+
+      // 5. GET /auth/user/ เพื่อดึงข้อมูล user และเช็ค role สำหรับ navigate
       const userResponse = await axios.get(`${AUTH_BASE}/user/`, {
         headers: {
-          Authorization: `Bearer ${data.access}`
+          Authorization: `Bearer ${data.access}` // ส่ง token ไปด้วยเพื่อยืนยันตัวตน
         }
       });
-      
+
       const userData = userResponse.data;
-      
-      if (userData?.is_superuser || userData?.role === 'admin') {
-        navigate("/overview", { replace: true });
+
+      // 6. navigate ตาม role
+      if (userData?.is_superuser || userData?.role === "admin") {
+        navigate("/overview", { replace: true });  // Admin → หน้าภาพรวม
       } else {
-        navigate("/dashboard", { replace: true });
+        navigate("/dashboard", { replace: true }); // Employee → หน้า dashboard
       }
     } catch (e) {
+      // Login ไม่สำเร็จ → อาจเกิดจาก username/password ผิด → LoginView ส่ง 401 กลับมา
       setErr("เข้าสู่ระบบไม่สำเร็จ ตรวจสอบชื่อผู้ใช้หรือรหัสผ่าน");
     } finally {
       setLoading(false);

@@ -1,31 +1,38 @@
-// frontend/src/pages/Register.jsx
+// src/pages/Register.jsx
 import { useState } from "react";
-import axios from "axios";
+import axios from "axios";                          
 import { Link, useNavigate } from "react-router-dom";
-
 const AUTH_BASE =
   (import.meta.env.VITE_API || "http://127.0.0.1:8000/api") + "/auth";
 
 export default function Register() {
   const nav = useNavigate();
-  const [form, setForm] = useState({
-    username: "",
-    email: "",
-    phone: "",
-    password: "",
-    confirm: "",
-  });
-  const [show1, setShow1] = useState(false);
-  const [show2, setShow2] = useState(false);
-  const [err, setErr] = useState("");
-  const [ok, setOk] = useState("");
-  const [loading, setLoading] = useState(false);
 
+  // ── State ข้อมูลฟอร์ม ─────────────────────────────────────
+  const [form, setForm] = useState({
+    username: "",   // ชื่อผู้ใช้
+    email: "",      // อีเมล
+    phone: "",      // เบอร์โทร (ไม่บังคับ)
+    password: "",   // รหัสผ่าน
+    confirm: "",    // ยืนยันรหัสผ่าน
+  });
+
+  const [show1, setShow1] = useState(false);   // แสดง/ซ่อนรหัสผ่าน
+  const [show2, setShow2] = useState(false);   // แสดง/ซ่อนยืนยันรหัสผ่าน
+  const [err, setErr] = useState("");          // ข้อความ error
+  const [ok, setOk] = useState("");            // ข้อความสำเร็จ
+  const [loading, setLoading] = useState(false); // สถานะกำลังส่งข้อมูล
+
+  // ── ตรวจสอบความแข็งแรงรหัสผ่าน ──────────────────────────
+  // ต้องมีอย่างน้อย 8 ตัว + มีทั้งตัวอักษรและตัวเลข
   const passOk = (s) => s.length >= 8 && /[A-Za-z]/.test(s) && /\d/.test(s);
 
+  // ── ส่งข้อมูลสมัครสมาชิก 
   const submit = async (e) => {
     e.preventDefault();
     setErr(""); setOk("");
+
+    // ── validate ฝั่ง Frontend ก่อนส่ง API ──────────────────
     if (!passOk(form.password))
       return setErr("รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร และมีทั้งตัวอักษรและตัวเลข");
     if (form.password !== form.confirm)
@@ -33,26 +40,31 @@ export default function Register() {
 
     try {
       setLoading(true);
-      // ✅ สร้าง payload และเพิ่ม phone ถ้ามีการกรอก
+
+      // ── สร้าง payload ส่งไป Backend ──────────────────────
       const payload = {
         username: form.username,
         email: form.email,
         password: form.password,
       };
       if (form.phone) {
-        payload.phone = form.phone;
+        payload.phone = form.phone; // เพิ่ม phone เฉพาะเมื่อกรอกมา
       }
+
+      // ── POST /auth/register/ → RegisterView → RegisterSerializer → User.objects.create_user() ──
       await axios.post(`${AUTH_BASE}/register/`, payload);
+
       setOk("สมัครสมาชิกสำเร็จ! กำลังพาไปหน้าเข้าสู่ระบบ…");
-      setTimeout(() => nav("/login", { replace: true }), 1200);
+      setTimeout(() => nav("/login", { replace: true }), 1200); // รอ 1.2 วิ แล้ว navigate ไป /login
     } catch (e2) {
+      // อาจเกิดจาก username/email ซ้ำ → RegisterSerializer จะ validate แล้วส่ง 400 กลับมา
       setErr("สมัครสมาชิกไม่สำเร็จ — อาจมีผู้ใช้ชื่อนี้/อีเมลนี้อยู่แล้ว");
     } finally {
       setLoading(false);
     }
   };
 
-  // Password strength indicator
+  // ── คำนวณระดับความแข็งแรงรหัสผ่าน ──────────────────────
   const getPasswordStrength = () => {
     const pw = form.password;
     if (!pw) return { level: 0, text: "", color: "" };
@@ -62,7 +74,7 @@ export default function Register() {
     return { level: 1, text: "อ่อนแอ", color: "bg-red-500" };
   };
 
-  const strength = getPasswordStrength();
+  const strength = getPasswordStrength(); // ใช้แสดง progress bar ความแข็งแรงรหัสผ่าน
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center p-4">

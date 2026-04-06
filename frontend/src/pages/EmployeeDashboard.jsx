@@ -1,55 +1,60 @@
 // src/pages/EmployeeDashboard.jsx
-// ✅ แก้ไข: เพิ่มการแสดงบันทึกของ Admin ใน FestivalCalendar
 import React, { useEffect, useState } from 'react';
 import api from '../api';
-import FestivalCalendarEmployee from '../components/FestivalCalendarEmployee';  // ✅ ใช้ Employee version
+import FestivalCalendar from '../components/FestivalCalendar';
 import FestivalNoticeCard from '../components/FestivalNoticeCard';
 
 const EmployeeDashboard = () => {
   const [stats, setStats] = useState({
     total_products: 0,
     low_stock_count: 0,
-    in_today: 0,
     out_today: 0,
     low_stock_items: [],
     movements: [],
   });
 
-  const [tasks, setTasks] = useState({
-    pending: 0,
-  });
-
- 
-  const [adminEvents, setAdminEvents] = useState([]);
-
+  const [tasks, setTasks] = useState({ pending: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchDashboardData();
+    fetchDashboardData(); // ✅ ดึงทุกอย่างรวมกัน ไม่ต้องเรียก fetchMovements แยก
     fetchTasksData();
-    fetchAdminEvents(); 
   }, []);
 
   const fetchDashboardData = async () => {
     try {
-      // ✅ เรียก EmployeeDashboardViewSet endpoint
       const { data: dashboardData } = await api.get('/employee-dashboard/overview/');
 
+      // ── ดึง total_products จาก listings เหมือน Admin ──
+      let totalStock = dashboardData.total_products || 0;
       try {
-        const { data: listingsData } = await api.get("/listings/?active=1");
-        const listingArr = Array.isArray(listingsData) ? listingsData : (listingsData.results ?? []);
-        const totalStock = listingArr.reduce((sum, p) => {
-          const qty = parseFloat(p.quantity) || 0;
-          return sum + qty;
-        }, 0);
-
-        setStats({
-          ...dashboardData,
-          total_products: totalStock
-        });
+        const { data: listingsData } = await api.get('/listings/?active=1');
+        const listingArr = Array.isArray(listingsData)
+          ? listingsData
+          : (listingsData.results ?? []);
+        totalStock = listingArr.reduce((sum, p) => sum + (parseFloat(p.quantity) || 0), 0);
       } catch {
-        setStats(dashboardData);
+        // ถ้าดึง listings ไม่ได้ ใช้ค่าจาก dashboard แทน
       }
+
+      // ── ✅ ดึง movements จาก overview เลย (Backend เพิ่มให้แล้ว) ──
+      const movements = (dashboardData.movements || []).slice(0, 6).map(mv => ({
+        id:   mv.id,
+        name: mv.name || '-',
+        type: mv.type || 'out',
+        qty:  mv.qty  || 0,
+        date: mv.date || null,
+      }));
+
+      setStats(prev => ({
+        ...prev,
+        total_products:  totalStock,
+        low_stock_count: dashboardData.low_stock_count || 0,
+        low_stock_items: dashboardData.low_stock_items || [],
+        out_today:       dashboardData.today_sales?.total_quantity || 0,
+        movements,       // ✅ เซฟ movements ด้วย
+      }));
+
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
     } finally {
@@ -57,26 +62,14 @@ const EmployeeDashboard = () => {
     }
   };
 
+  // ✅ ลบ fetchMovements() ออกแล้ว เพราะดึงจาก overview แทน
+
   const fetchTasksData = async () => {
     try {
       const response = await api.get('/tasks/my_tasks/');
-      setTasks({
-        pending: response.data.pending?.length || 0,
-      });
+      setTasks({ pending: response.data.pending?.length || 0 });
     } catch (error) {
       console.error('Error fetching tasks:', error);
-    }
-  };
-
-  const fetchAdminEvents = async () => {
-    try {
-      console.log('🔍 กำลังดึงข้อมูล Admin Events...');
-      const response = await api.get('/custom-events/upcoming_shared/');
-      console.log('✅ Admin Events ที่ได้:', response.data);
-      setAdminEvents(response.data || []);
-    } catch (error) {
-      console.error('❌ Error fetching admin events:', error);
-      setAdminEvents([]);
     }
   };
 
@@ -93,7 +86,7 @@ const EmployeeDashboard = () => {
 
   return (
     <div className="space-y-6 p-4 max-w-7xl mx-auto">
-      {/* Header - ไม่มี emoji */}
+      {/* Header */}
       <div className="mb-6">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
@@ -108,15 +101,13 @@ const EmployeeDashboard = () => {
         </div>
       </div>
 
-      {/* Festival Notice Card */}
       <FestivalNoticeCard />
 
-      {/* Stats Cards - ไม่มี emoji */}
+      {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Products */}
-        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-5 text-white shadow-lg hover:shadow-xl transition-shadow">
+        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-5 text-white shadow-lg">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
               </svg>
@@ -128,10 +119,9 @@ const EmployeeDashboard = () => {
           </div>
         </div>
 
-        {/* Low Stock */}
-        <div className="bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl p-5 text-white shadow-lg hover:shadow-xl transition-shadow">
+        <div className="bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl p-5 text-white shadow-lg">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
@@ -143,10 +133,9 @@ const EmployeeDashboard = () => {
           </div>
         </div>
 
-        {/* Today Issues */}
-        <div className="bg-gradient-to-br from-rose-500 to-pink-600 rounded-xl p-5 text-white shadow-lg hover:shadow-xl transition-shadow">
+        <div className="bg-gradient-to-br from-rose-500 to-pink-600 rounded-xl p-5 text-white shadow-lg">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
               </svg>
@@ -158,10 +147,9 @@ const EmployeeDashboard = () => {
           </div>
         </div>
 
-        {/* Pending Tasks */}
-        <div className="bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl p-5 text-white shadow-lg hover:shadow-xl transition-shadow">
+        <div className="bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl p-5 text-white shadow-lg">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
               </svg>
@@ -174,13 +162,10 @@ const EmployeeDashboard = () => {
         </div>
       </div>
 
-
-
-      {/* Calendar + Recent Movements + Low Stock - Side by Side */}
+      {/* Movements + Low Stock + Calendar */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left Side - Recent Movements + Low Stock */}
         <div className="flex flex-col gap-3 h-full">
-          {/* Recent Stock Movements - อยู่ด้านบน */}
+          {/* Movements */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex-1 flex flex-col">
             <div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100 flex items-center justify-between">
               <h2 className="text-blue-800 font-bold text-base flex items-center gap-2">
@@ -191,13 +176,11 @@ const EmployeeDashboard = () => {
                 </div>
                 สินค้าเข้า - ออก
               </h2>
-              <a href="/history" className="text-blue-600 hover:text-blue-700 text-sm font-bold">
-                ดูทั้งหมด
-              </a>
+              <a href="/history" className="text-blue-600 hover:text-blue-700 text-sm font-bold">ดูทั้งหมด</a>
             </div>
-            
+
             <div className="p-3 flex-1 overflow-y-auto">
-              {(!stats.movements || stats.movements.length === 0) ? (
+              {stats.movements.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-center py-8">
                   <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2">
                     <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -217,22 +200,20 @@ const EmployeeDashboard = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {stats.movements.slice(0, 6).map((mv) => (
-<tr key={mv.id} className="hover:bg-gray-50 transition-colors">
-  <td className="px-3 py-3 text-gray-500 text-xs whitespace-nowrap">
-    {mv.date ? new Date(mv.date).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '-'}
-  </td>
-  <td className="px-3 py-3 font-medium text-gray-700">
-    <div className="truncate max-w-[160px] text-xs" title={mv.name}>{mv.name}</div>
-  </td>
-  <td className="px-3 py-3 text-center whitespace-nowrap">
-    <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold ${mv.type === 'in' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-      {mv.type === 'in' ? 'เข้า' : 'ออก'}
-    </span>
-  </td>
-                        <td className={`px-3 py-2.5 text-right font-bold ${
-                          mv.type === 'in' ? 'text-green-600' : 'text-red-600'
-                        }`}>
+                    {stats.movements.map((mv) => (
+                      <tr key={mv.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-3 py-3 text-gray-500 text-xs whitespace-nowrap">
+                          {mv.date ? new Date(mv.date).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '-'}
+                        </td>
+                        <td className="px-3 py-3 font-medium text-gray-700">
+                          <div className="truncate max-w-[160px] text-xs" title={mv.name}>{mv.name}</div>
+                        </td>
+                        <td className="px-3 py-3 text-center whitespace-nowrap">
+                          <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold ${mv.type === 'in' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                            {mv.type === 'in' ? 'เข้า' : 'ออก'}
+                          </span>
+                        </td>
+                        <td className={`px-3 py-2.5 text-right font-bold ${mv.type === 'in' ? 'text-green-600' : 'text-red-600'}`}>
                           {mv.qty}
                         </td>
                       </tr>
@@ -243,7 +224,7 @@ const EmployeeDashboard = () => {
             </div>
           </div>
 
-          {/* Low Stock Alert - อยู่ด้านล่าง */}
+          {/* Low Stock */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex-1 flex flex-col">
             <div className="px-4 py-3 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-100">
               <h2 className="text-amber-800 font-bold text-base flex items-center gap-2">
@@ -255,7 +236,6 @@ const EmployeeDashboard = () => {
                 แจ้งเตือนของใกล้หมด
               </h2>
             </div>
-            
             <div className="p-4 flex-1 overflow-y-auto">
               {stats.low_stock_items.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full py-12 text-gray-400">
@@ -269,17 +249,10 @@ const EmployeeDashboard = () => {
               ) : (
                 <div className="space-y-3">
                   {stats.low_stock_items.slice(0, 6).map((item) => (
-                    <div 
-                      key={item.id} 
-                      className="flex items-center gap-4 p-3 bg-red-50 border border-red-100 rounded-xl"
-                    >
+                    <div key={item.id} className="flex items-center gap-4 p-3 bg-red-50 border border-red-100 rounded-xl">
                       <div className="w-12 h-12 rounded-lg bg-white flex-shrink-0 overflow-hidden shadow-sm">
                         {item.image_url ? (
-                          <img 
-                            src={item.image_url} 
-                            alt={item.name} 
-                            className="w-full h-full object-cover"
-                          />
+                          <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
                         ) : (
                           <div className="flex items-center justify-center h-full text-gray-300">
                             <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
@@ -304,11 +277,9 @@ const EmployeeDashboard = () => {
           </div>
         </div>
 
-        {/* Festival Calendar - Right Side */}
-        {/* ✅ ส่ง adminEvents ไปให้ FestivalCalendarEmployee */}
+        {/* ปฏิทิน */}
         <div>
-          {console.log('📦 ส่ง adminEvents ไปให้ Calendar:', adminEvents)}
-          <FestivalCalendarEmployee adminEvents={adminEvents} />
+          <FestivalCalendar isAdmin={false} />
         </div>
       </div>
     </div>

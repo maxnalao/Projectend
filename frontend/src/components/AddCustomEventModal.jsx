@@ -52,8 +52,9 @@ export default function AddCustomEventModal({ open, defaultDate = "", onClose, o
 
   // ── บันทึกงานใหม่ ─────────────────────────────────────────
   const handleSubmit = async () => {
+    // ตรวจสอบ title และ date ไม่ว่าง
     if (!form.title.trim() || !form.date) {
-      return alert("กรุณากรอกชื่องานและวันที่ให้ครบ");
+      return alert("กรุณากรอกข้อมูลให้ครบ");
     }
     setSaving(true);
     try {

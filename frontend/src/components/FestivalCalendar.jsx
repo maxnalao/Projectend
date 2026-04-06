@@ -1,3 +1,10 @@
+// ============================================================
+// FestivalCalendar.jsx
+// ใช้ได้ทั้ง Admin และพนักงาน — แยกด้วย prop isAdmin
+// ใช้งาน:
+//   <FestivalCalendar isAdmin={true} />   → Admin (แก้ไข/ลบได้)
+//   <FestivalCalendar isAdmin={false} />  → พนักงาน (ดูได้อย่างเดียว)
+// ============================================================
 
 import React, { useEffect, useState, useMemo } from 'react';
 import api from '../api';
@@ -5,10 +12,11 @@ import CustomEventDetailModal from './CustomEventDetailModal';
 
 const GOOGLE_API_KEY = "AIzaSyAtdfhSI2DJHNjiYfX_wD6MRHkiL2EIZb4";
 
+// จำแนกประเภทวันหยุดจากชื่อ
 const mapHolidayType = (name) => {
   const lowerName = name.toLowerCase();
   const thaiName = name;
-  
+
   if (lowerName.includes("new year") || thaiName.includes("ปีใหม่") || thaiName.includes("ขึ้นปีใหม่")) return "selling_festival";
   if (lowerName.includes("songkran") || thaiName.includes("สงกรานต์")) return "selling_festival";
   if (lowerName.includes("loy krathong") || thaiName.includes("ลอยกระทง")) return "selling_festival";
@@ -16,31 +24,35 @@ const mapHolidayType = (name) => {
   if (lowerName.includes("chinese new year") || thaiName.includes("ตรุษจีน")) return "selling_festival";
   if (lowerName.includes("mother") || thaiName.includes("แม่") || thaiName.includes("สิริกิติ์")) return "selling_festival";
   if (lowerName.includes("father") || thaiName.includes("พ่อ") || thaiName.includes("ภูมิพล")) return "selling_festival";
-  
-  if (lowerName.includes("bucha") || lowerName.includes("buddhist") || lowerName.includes("phansa") || 
-      thaiName.includes("มาฆ") || thaiName.includes("วิสาข") || thaiName.includes("อาสาฬ") || 
+
+  if (lowerName.includes("bucha") || lowerName.includes("buddhist") || lowerName.includes("phansa") ||
+      thaiName.includes("มาฆ") || thaiName.includes("วิสาข") || thaiName.includes("อาสาฬ") ||
       thaiName.includes("เข้าพรรษา") || thaiName.includes("ออกพรรษา") || thaiName.includes("บูชา")) return "buddhist";
-  
-  if (lowerName.includes("king") || lowerName.includes("queen") || lowerName.includes("birthday") || 
-      lowerName.includes("coronation") || thaiName.includes("เฉลิม") || thaiName.includes("พระราช") || 
+
+  if (lowerName.includes("king") || lowerName.includes("queen") || lowerName.includes("birthday") ||
+      lowerName.includes("coronation") || thaiName.includes("เฉลิม") || thaiName.includes("พระราช") ||
       thaiName.includes("จักรี") || thaiName.includes("ปิยมหาราช") || thaiName.includes("รัชกาล")) return "royal";
-  
+
   return "national";
 };
 
-const FestivalCalendar = () => {
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [festivals, setFestivals] = useState([]);
-  const [thaiHolidays, setThaiHolidays] = useState([]);
-  const [customEvents, setCustomEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
+// ============================================================
+// Component หลัก — รับ prop isAdmin (default = false)
+// ============================================================
+const FestivalCalendar = ({ isAdmin = false }) => {
+
+  const [currentDate, setCurrentDate]     = useState(new Date());
+  const [festivals, setFestivals]         = useState([]);
+  const [thaiHolidays, setThaiHolidays]   = useState([]);
+  const [customEvents, setCustomEvents]   = useState([]);
+  const [loading, setLoading]             = useState(true);
   const [selectedEvent, setSelectedEvent] = useState(null);
-  const [showDetail, setShowDetail] = useState(false);
+  const [showDetail, setShowDetail]       = useState(false);
 
   const PRIORITY_COLORS = {
-    low: { dot: 'bg-green-500', label: 'ต่ำ' },
+    low:    { dot: 'bg-green-500',  label: 'ต่ำ' },
     medium: { dot: 'bg-yellow-500', label: 'ปกติ' },
-    high: { dot: 'bg-red-500', label: 'สูง' },
+    high:   { dot: 'bg-red-500',    label: 'สูง' },
     urgent: { dot: 'bg-purple-500', label: 'ด่วน' },
   };
 
@@ -51,6 +63,8 @@ const FestivalCalendar = () => {
 
   const dayNames = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
 
+  // ── useEffect ──────────────────────────────────────────────
+
   useEffect(() => {
     fetchAllData();
   }, [currentDate.getFullYear()]);
@@ -59,15 +73,17 @@ const FestivalCalendar = () => {
     loadCustomEvents();
   }, [currentDate]);
 
+  // ── ดึงข้อมูล ─────────────────────────────────────────────
+
   const loadCustomEvents = async () => {
     try {
       const response = await api.get("/custom-events/");
       setCustomEvents(response.data.results || response.data || []);
     } catch (error) {
-      console.warn("Custom events API not ready, using localStorage fallback");
-      const saved = localStorage.getItem("customEvents");
-      if (saved) {
-        setCustomEvents(JSON.parse(saved));
+      // API พัง → Admin ใช้ localStorage fallback / พนักงานใช้ array ว่าง
+      if (isAdmin) {
+        const saved = localStorage.getItem("customEvents");
+        setCustomEvents(saved ? JSON.parse(saved) : []);
       } else {
         setCustomEvents([]);
       }
@@ -77,10 +93,7 @@ const FestivalCalendar = () => {
   const fetchAllData = async () => {
     setLoading(true);
     try {
-      await Promise.all([
-        fetchFestivals(),
-        fetchThaiHolidays()
-      ]);
+      await Promise.all([fetchFestivals(), fetchThaiHolidays()]);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -90,14 +103,11 @@ const FestivalCalendar = () => {
 
   const fetchFestivals = async () => {
     try {
-      const year = currentDate.getFullYear();
+      const year  = currentDate.getFullYear();
       const month = currentDate.getMonth() + 1;
-      const response = await api.get('/festivals/calendar/', {
-        params: { year, month }
-      });
+      const response = await api.get('/festivals/calendar/', { params: { year, month } });
       setFestivals(response.data.festivals || []);
     } catch (error) {
-      console.error('Error fetching festivals:', error);
       setFestivals([]);
     }
   };
@@ -105,184 +115,125 @@ const FestivalCalendar = () => {
   const fetchThaiHolidays = async () => {
     const year = currentDate.getFullYear();
     localStorage.removeItem(`holidays_overview_${year}`);
-
     try {
       const calendarId = 'th.th#holiday@group.v.calendar.google.com';
-      const timeMin = `${year}-01-01T00:00:00Z`;
-      const timeMax = `${year}-12-31T23:59:59Z`;
-      
-      const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?key=${GOOGLE_API_KEY}&timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true&orderBy=startTime`;
+      const timeMin    = `${year}-01-01T00:00:00Z`;
+      const timeMax    = `${year}-12-31T23:59:59Z`;
+      const url        = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?key=${GOOGLE_API_KEY}&timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true&orderBy=startTime`;
 
       const response = await fetch(url);
-      
       if (!response.ok) throw new Error("Google API Error");
-      
       const result = await response.json();
 
       if (result.items && result.items.length > 0) {
         const holidays = result.items.map((item) => {
           const holidayType = mapHolidayType(item.summary);
           return {
-            date: item.start.date || item.start.dateTime?.split("T")[0],
-            name: item.summary,
+            date:        item.start.date || item.start.dateTime?.split("T")[0],
+            name:        item.summary,
             description: item.description || "",
-            type: holidayType,
-            isHoliday: true,
-            isSelling: holidayType === "selling_festival",
-            color: holidayType === "selling_festival" ? "#ec4899" :
-                   holidayType === "buddhist" ? "#f97316" :
-                   holidayType === "royal" ? "#eab308" : "#ef4444"
+            type:        holidayType,
+            isHoliday:   true,
+            isSelling:   holidayType === "selling_festival",
+            color:       holidayType === "selling_festival" ? "#ec4899" :
+                         holidayType === "buddhist"         ? "#f97316" :
+                         holidayType === "royal"            ? "#eab308" : "#ef4444"
           };
         });
-
         setThaiHolidays(holidays);
-        
-        localStorage.setItem(`holidays_overview_${year}`, JSON.stringify({
-          data: holidays,
-          timestamp: Date.now()
-        }));
+        localStorage.setItem(`holidays_overview_${year}`, JSON.stringify({ data: holidays, timestamp: Date.now() }));
       }
     } catch (err) {
-      console.error("Fetch Thai holidays error:", err);
       const cached = localStorage.getItem(`holidays_overview_${year}`);
-      if (cached) {
-        setThaiHolidays(JSON.parse(cached).data);
-      }
+      if (cached) setThaiHolidays(JSON.parse(cached).data);
     }
   };
 
+  // ── รวมข้อมูลทั้ง 3 แหล่ง ──────────────────────────────────
+
   const allEvents = useMemo(() => {
     const events = [];
-    
-    thaiHolidays.forEach((h) => {
-      events.push({
-        ...h,
-        id: `holiday-${h.date}`,
-        title: h.name,
-        isHoliday: true,
-        isSelling: h.type === "selling_festival",
-      });
-    });
-    
-    festivals.forEach((f) => {
-      events.push({
-        ...f,
-        id: `festival-${f.id}`,
-        title: f.name,
-        isFestival: true,
-        color: f.color || "#10b981"
-      });
-    });
-
-    customEvents.forEach((e) => {
-      events.push({
-        ...e,
-        id: e.id,
-        title: e.title,
-        isCustom: true,
-        color: "#3b82f6"
-      });
-    });
-    
+    thaiHolidays.forEach((h) => events.push({ ...h, id: `holiday-${h.date}`,  title: h.name,  isHoliday: true,  isSelling: h.type === "selling_festival" }));
+    festivals.forEach((f)    => events.push({ ...f, id: `festival-${f.id}`,   title: f.name,  isFestival: true, color: f.color || "#10b981" }));
+    customEvents.forEach((e) => events.push({ ...e, id: e.id,                  title: e.title, isCustom: true,   color: "#3b82f6" }));
     return events;
   }, [thaiHolidays, festivals, customEvents]);
 
-  const getDaysInMonth = (date) => {
-    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-  };
+  // ── ฟังก์ชันปฏิทิน ────────────────────────────────────────
 
-  const getFirstDayOfMonth = (date) => {
-    return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
-  };
-
-  const previousMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1));
-  };
-
-  const nextMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1));
-  };
+  const getDaysInMonth     = (date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  const getFirstDayOfMonth = (date) => new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+  const previousMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1));
+  const nextMonth     = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1));
 
   const getEventsForDay = (day) => {
     const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    
     return allEvents.filter((e) => {
-      if (e.isHoliday || e.isCustom) {
-        return e.date === dateStr;
-      }
+      if (e.isHoliday || e.isCustom) return e.date === dateStr;
       if (e.isFestival) {
-        const cellDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
-        const startDate = new Date(e.start_date);
-        const endDate = new Date(e.end_date);
-        return cellDate >= startDate && cellDate <= endDate;
+        const cellDate  = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
+        return cellDate >= new Date(e.start_date) && cellDate <= new Date(e.end_date);
       }
       return false;
     });
   };
 
   const renderCalendarDays = () => {
-    const days = [];
+    const days        = [];
     const daysInMonth = getDaysInMonth(currentDate);
-    const firstDay = getFirstDayOfMonth(currentDate);
+    const firstDay    = getFirstDayOfMonth(currentDate);
 
     for (let i = 0; i < firstDay; i++) {
       days.push(<div key={`empty-${i}`} className="h-20 bg-gray-50 rounded-lg"></div>);
     }
 
     for (let day = 1; day <= daysInMonth; day++) {
-      const dayEvents = getEventsForDay(day);
-      const hasSelling = dayEvents.some(e => e.isSelling || e.type === "selling_festival");
+      const dayEvents   = getEventsForDay(day);
+      const hasSelling  = dayEvents.some(e => e.isSelling || e.type === "selling_festival");
       const hasBuddhist = dayEvents.some(e => e.type === "buddhist");
-      const hasRoyal = dayEvents.some(e => e.type === "royal");
-      const hasHoliday = dayEvents.some(e => e.isHoliday && !e.isSelling && e.type !== "buddhist" && e.type !== "royal");
+      const hasRoyal    = dayEvents.some(e => e.type === "royal");
+      const hasHoliday  = dayEvents.some(e => e.isHoliday && !e.isSelling && e.type !== "buddhist" && e.type !== "royal");
       const hasFestival = dayEvents.some(e => e.isFestival);
-      const hasCustom = dayEvents.some(e => e.isCustom);
-      const isToday = new Date().toDateString() === 
-        new Date(currentDate.getFullYear(), currentDate.getMonth(), day).toDateString();
-      const isWeekend = (firstDay + day - 1) % 7 === 0 || (firstDay + day - 1) % 7 === 6;
+      const hasCustom   = dayEvents.some(e => e.isCustom);
+      const isToday     = new Date().toDateString() === new Date(currentDate.getFullYear(), currentDate.getMonth(), day).toDateString();
+      const isWeekend   = (firstDay + day - 1) % 7 === 0 || (firstDay + day - 1) % 7 === 6;
 
       days.push(
         <div
           key={`day-${day}`}
           className={`h-20 p-1.5 rounded-lg border transition-all cursor-pointer hover:shadow-md ${
-            isToday ? 'bg-blue-50 border-blue-400 ring-2 ring-blue-200' :
-            hasSelling ? 'bg-pink-50 border-pink-300' :
-            hasBuddhist ? 'bg-orange-50 border-orange-300' :
-            hasRoyal ? 'bg-yellow-50 border-yellow-300' :
-            hasHoliday ? 'bg-red-50 border-red-200' :
-            hasFestival ? 'bg-green-50 border-green-200' :
-            hasCustom ? 'bg-blue-50 border-blue-200' :
-            'bg-white border-gray-200 hover:border-gray-300'
+            isToday    ? 'bg-blue-50 border-blue-400 ring-2 ring-blue-200' :
+            hasSelling ? 'bg-pink-50 border-pink-300'     :
+            hasBuddhist? 'bg-orange-50 border-orange-300' :
+            hasRoyal   ? 'bg-yellow-50 border-yellow-300' :
+            hasHoliday ? 'bg-red-50 border-red-200'       :
+            hasFestival? 'bg-green-50 border-green-200'   :
+            hasCustom  ? 'bg-blue-50 border-blue-200'     :
+                         'bg-white border-gray-200 hover:border-gray-300'
           }`}
           onClick={() => dayEvents.length > 0 && handleEventClick(dayEvents[0])}
         >
           <div className={`text-sm font-semibold ${
-            isToday ? 'text-blue-600' :
-            hasSelling ? 'text-pink-600' :
-            hasBuddhist ? 'text-orange-600' :
-            hasRoyal ? 'text-yellow-600' :
-            hasHoliday ? 'text-red-600' :
-            isWeekend ? 'text-red-500' : 'text-gray-700'
+            isToday    ? 'text-blue-600'   :
+            hasSelling ? 'text-pink-600'   :
+            hasBuddhist? 'text-orange-600' :
+            hasRoyal   ? 'text-yellow-600' :
+            hasHoliday ? 'text-red-600'    :
+            isWeekend  ? 'text-red-500'    : 'text-gray-700'
           }`}>
             {day}
           </div>
-          
+
           <div className="mt-1 space-y-0.5 overflow-hidden">
             {dayEvents.slice(0, 2).map((event, idx) => (
-              <div
-                key={idx}
+              <div key={idx}
                 className={`text-xs px-1.5 py-0.5 rounded truncate border flex items-center gap-1 ${
-                  event.isSelling || event.type === "selling_festival"
-                    ? 'bg-pink-100 text-pink-700 border-pink-300'
-                    : event.type === "buddhist" 
-                    ? 'bg-orange-100 text-orange-700 border-orange-300'
-                    : event.type === "royal" 
-                    ? 'bg-yellow-100 text-yellow-700 border-yellow-300'
-                    : event.isHoliday 
-                    ? 'bg-red-100 text-red-700 border-red-300'
-                    : event.isFestival
-                    ? 'bg-green-100 text-green-700 border-green-300'
-                    : 'bg-blue-100 text-blue-700 border-blue-300'
+                  event.isSelling || event.type === "selling_festival" ? 'bg-pink-100 text-pink-700 border-pink-300'     :
+                  event.type === "buddhist"                            ? 'bg-orange-100 text-orange-700 border-orange-300' :
+                  event.type === "royal"                               ? 'bg-yellow-100 text-yellow-700 border-yellow-300' :
+                  event.isHoliday                                      ? 'bg-red-100 text-red-700 border-red-300'         :
+                  event.isFestival                                     ? 'bg-green-100 text-green-700 border-green-300'   :
+                                                                         'bg-blue-100 text-blue-700 border-blue-300'
                 }`}
                 title={event.title || event.name}
               >
@@ -299,34 +250,31 @@ const FestivalCalendar = () => {
         </div>
       );
     }
-
     return days;
   };
+
+  // ── Handler ───────────────────────────────────────────────
 
   const handleEventClick = (event) => {
     setSelectedEvent(event);
     setShowDetail(true);
   };
 
-  // ✅ Handler สำหรับแก้ไข Custom Event
   const handleEditEvent = async (event) => {
-    console.log('Edit event:', event);
-    // TODO: เปิด Edit Modal หรือ navigate ไปหน้าแก้ไข
     alert(`แก้ไข: ${event.title}\n(ฟังก์ชันนี้ยังไม่ได้เชื่อมต่อ)`);
   };
 
-  // ✅ Handler สำหรับลบ Custom Event
   const handleDeleteEvent = async (event) => {
     try {
       await api.delete(`/custom-events/${event.id}/`);
       alert('ลบงานสำเร็จ!');
-      // โหลดข้อมูลใหม่
       loadCustomEvents();
     } catch (error) {
-      console.error('Delete error:', error);
       alert('ลบงานไม่สำเร็จ');
     }
   };
+
+  // ── Upcoming Events ───────────────────────────────────────
 
   const upcomingEvents = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -336,12 +284,15 @@ const FestivalCalendar = () => {
       .slice(0, 6);
   }, [allEvents]);
 
-  const year = currentDate.getFullYear();
-  const month = currentDate.getMonth();
+  const year     = currentDate.getFullYear();
+  const month    = currentDate.getMonth();
   const thaiYear = year + 543;
+
+  // ── JSX ───────────────────────────────────────────────────
 
   return (
     <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+
       {/* Header */}
       <div className="px-4 py-3 bg-gradient-to-r from-pink-500 to-rose-500">
         <h2 className="text-white font-bold text-base flex items-center gap-2">
@@ -353,6 +304,8 @@ const FestivalCalendar = () => {
       </div>
 
       <div className="p-4">
+
+        {/* Navigation เปลี่ยนเดือน */}
         <div className="flex items-center justify-between mb-4">
           <button onClick={previousMonth} className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg flex items-center gap-1">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -369,12 +322,16 @@ const FestivalCalendar = () => {
           </button>
         </div>
 
+        {/* หัวตาราง อา จ อ พ พฤ ศ ส */}
         <div className="grid grid-cols-7 gap-1 mb-2">
           {dayNames.map((day, idx) => (
-            <div key={idx} className={`text-center text-sm font-semibold py-2 ${idx === 0 ? 'text-red-500' : idx === 6 ? 'text-blue-500' : 'text-gray-500'}`}>{day}</div>
+            <div key={idx} className={`text-center text-sm font-semibold py-2 ${
+              idx === 0 ? 'text-red-500' : idx === 6 ? 'text-blue-500' : 'text-gray-500'
+            }`}>{day}</div>
           ))}
         </div>
 
+        {/* Grid ปฏิทิน */}
         <div className="grid grid-cols-7 gap-1">
           {loading ? (
             <div className="col-span-7 py-12 text-center text-gray-400">
@@ -384,7 +341,7 @@ const FestivalCalendar = () => {
           ) : renderCalendarDays()}
         </div>
 
-        {/* Upcoming Events */}
+        {/* วันหยุดที่กำลังจะมาถึง */}
         {!loading && upcomingEvents.length > 0 && (
           <div className="mt-4 pt-4 border-t">
             <h4 className="font-bold text-gray-700 text-sm mb-3 flex items-center gap-2">
@@ -395,15 +352,20 @@ const FestivalCalendar = () => {
             </h4>
             <div className="space-y-2 max-h-36 overflow-y-auto">
               {upcomingEvents.map((event, idx) => (
-                <div key={idx} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 p-1.5 rounded-lg" onClick={() => handleEventClick(event)}>
+                <div key={idx}
+                  className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 p-1.5 rounded-lg"
+                  onClick={() => handleEventClick(event)}
+                >
                   <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                    event.isSelling || event.type === "selling_festival" ? 'bg-pink-500' :
-                    event.type === "buddhist" ? 'bg-orange-500' :
-                    event.type === "royal" ? 'bg-yellow-500' :
-                    event.isHoliday ? 'bg-red-500' : 
-                    event.isFestival ? 'bg-green-500' : 'bg-blue-500'
+                    event.isSelling || event.type === "selling_festival" ? 'bg-pink-500'   :
+                    event.type === "buddhist"                            ? 'bg-orange-500' :
+                    event.type === "royal"                               ? 'bg-yellow-500' :
+                    event.isHoliday                                      ? 'bg-red-500'    :
+                    event.isFestival                                     ? 'bg-green-500'  : 'bg-blue-500'
                   }`}></span>
-                  <span className="text-gray-500 text-xs w-14 flex-shrink-0">{new Date(event.date || event.start_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}</span>
+                  <span className="text-gray-500 text-xs w-14 flex-shrink-0">
+                    {new Date(event.date || event.start_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+                  </span>
                   <span className={`truncate ${event.isSelling || event.type === "selling_festival" ? 'text-pink-700 font-medium' : 'text-gray-700'}`}>
                     {event.title || event.name}
                   </span>
@@ -415,29 +377,26 @@ const FestivalCalendar = () => {
 
         {/* Legend */}
         <div className="mt-4 pt-4 border-t">
-          <h4 className="font-bold text-gray-700 text-sm mb-3 flex items-center gap-2">
-            <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
-            </svg>
-            สัญลักษณ์
-          </h4>
+          <h4 className="font-bold text-gray-700 text-sm mb-3">สัญลักษณ์</h4>
           <div className="flex flex-wrap gap-3 text-xs">
-            <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-pink-500"></span><span className="text-gray-600 font-medium">เทศกาลขายดี</span></div>
+            <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-pink-500"></span><span className="text-gray-600">เทศกาลขายดี</span></div>
             <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-400"></span><span className="text-gray-600">วันหยุดราชการ</span></div>
             <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-orange-400"></span><span className="text-gray-600">วันพุทธ</span></div>
             <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-yellow-400"></span><span className="text-gray-600">วันพระราชา</span></div>
-            <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-blue-400"></span><span className="text-gray-600">บันทึกของฉัน</span></div>
+            <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-blue-400"></span><span className="text-gray-600">บันทึก</span></div>
           </div>
         </div>
       </div>
 
-      {/* ✅ ใช้ CustomEventDetailModal แทน modal เดิม */}
+      {/* Popup รายละเอียด
+          isAdmin=true  → onEdit/onDelete มีค่า → เห็นปุ่มแก้ไข/ลบ
+          isAdmin=false → onEdit/onDelete = null → ไม่เห็นปุ่ม           */}
       {showDetail && selectedEvent && selectedEvent.isCustom && (
         <CustomEventDetailModal
           event={selectedEvent}
           onClose={() => setShowDetail(false)}
-          onEdit={handleEditEvent}
-          onDelete={handleDeleteEvent}
+          onEdit={isAdmin ? handleEditEvent : null}
+          onDelete={isAdmin ? handleDeleteEvent : null}
         />
       )}
     </div>

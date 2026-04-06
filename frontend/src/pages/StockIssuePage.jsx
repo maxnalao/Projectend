@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import api from "../api";
 
 export default function StockIssuePage() {
-  // ── State รายการสินค้าและการค้นหา ──────────────────────────
+  //รายการสินค้าและการค้นหา 
   const [items, setItems] = useState([]);         // สินค้าทั้งหมดที่โหลดมาจาก API
   const [q, setQ] = useState("");                 // คำค้นหาสินค้า
   const [cat, setCat] = useState("");             // หมวดหมู่ที่เลือกกรอง
@@ -14,7 +14,7 @@ export default function StockIssuePage() {
   const [issuing, setIssuing] = useState(false);  // สถานะกำลังส่งคำขอเบิก
   const navigate = useNavigate();
 
-  // ── โหลดสินค้าตามคำค้นหาและหมวดหมู่ ──────────────────────
+  //โหลดสินค้าตามคำค้นหาและหมวดหมู่
   const load = async () => {
     setLoading(true);
     try {
@@ -29,7 +29,7 @@ export default function StockIssuePage() {
     }
   };
 
-  // ── โหลดหมวดหมู่ทั้งหมดสำหรับ dropdown ────────────────────
+  //โหลดหมวดหมู่ทั้งหมดสำหรับ dropdown 
   const loadCats = async () => {
     try {
       const { data } = await api.get("/categories/");
@@ -42,19 +42,19 @@ export default function StockIssuePage() {
   // โหลดหมวดหมู่ครั้งเดียวตอนเปิดหน้า
   useEffect(() => { loadCats(); }, []);
 
-  // โหลดสินค้าใหม่ทุกครั้งที่ค้นหาหรือเปลี่ยนหมวดหมู่ รอ 250ms ก่อนส่ง (debounce)
+  // โหลดสินค้าใหม่ทุกครั้งที่ค้นหาหรือเปลี่ยนหมวดหมู่
   useEffect(() => {
     const t = setTimeout(load, 250); // รอ 250ms ลดการเรียก API ซ้ำขณะพิมพ์
     return () => clearTimeout(t);    // ล้าง timer เดิมก่อนสร้างใหม่
   }, [q, cat]);
 
-  // ── กรองเฉพาะสินค้าที่มีสต็อก > 0 ────────────────────────
+  //กรองเฉพาะสินค้าที่มีสต็อก
   const viewItems = useMemo(
     () => items.filter(x => Number(x.stock) > 0), // ไม่แสดงสินค้าที่หมดสต็อก
     [items]
   );
 
-  // ── เพิ่มสินค้าเข้าตะกร้า ──────────────────────────────────
+  //เพิ่มสินค้าเข้าตะกร้า
   const addToBasket = (p) => {
     setBasket((old) => {
       if (old[p.id]) return old; // มีอยู่แล้ว → ไม่เพิ่มซ้ำ
@@ -62,7 +62,7 @@ export default function StockIssuePage() {
     });
   };
 
-  // ── ลบสินค้าออกจากตะกร้า ───────────────────────────────────
+  //ลบสินค้าออกจากตะกร้า
   const removeFromBasket = (id) => {
     setBasket((old) => {
       const c = { ...old };
@@ -71,7 +71,7 @@ export default function StockIssuePage() {
     });
   };
 
-  // ── ปรับจำนวนสินค้าในตะกร้า ────────────────────────────────
+  // ปรับจำนวนสินค้าในตะกร้า
   const setQty = (id, qty) => {
     setBasket((old) => {
       const line = old[id];
@@ -82,7 +82,7 @@ export default function StockIssuePage() {
     });
   };
 
-  const lines = Object.values(basket); // แปลง basket object เป็น array สำหรับ render
+  const lines = Object.values(basket); 
 
   // เช็คว่าสามารถกดยืนยันเบิกได้หรือไม่
   const canSubmit = lines.length > 0 && // มีสินค้าในตะกร้าอย่างน้อย 1 รายการ
@@ -93,7 +93,7 @@ export default function StockIssuePage() {
     return lines.reduce((sum, l) => sum + Number(l.qty), 0);
   }, [lines]);
 
-  // ── ส่งคำขอเบิกสินค้า ──────────────────────────────────────
+  //ส่งคำขอเบิกสินค้า
   const submit = async () => {
     if (!canSubmit || issuing) return; // ป้องกันกดซ้ำหรือกดขณะยังไม่พร้อม
     setIssuing(true);
