@@ -1,10 +1,3 @@
-// ============================================================
-// FestivalCalendar.jsx
-// ใช้ได้ทั้ง Admin และพนักงาน — แยกด้วย prop isAdmin
-// ใช้งาน:
-//   <FestivalCalendar isAdmin={true} />   → Admin (แก้ไข/ลบได้)
-//   <FestivalCalendar isAdmin={false} />  → พนักงาน (ดูได้อย่างเดียว)
-// ============================================================
 
 import React, { useEffect, useState, useMemo } from 'react';
 import api from '../api';
@@ -63,7 +56,7 @@ const FestivalCalendar = ({ isAdmin = false }) => {
 
   const dayNames = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
 
-  // ── useEffect ──────────────────────────────────────────────
+  // ── useEffectvอัปเดพเมื่อเปลี่ยนเดือน/ปี
 
   useEffect(() => {
     fetchAllData();

@@ -46,7 +46,7 @@ class Product(models.Model):
         ]
 
 
-# ================ CLASS 3: Issue ================
+# ================ CLASS 3: Issue ใบเบิก
 class Issue(models.Model):
 
     created_by = models.ForeignKey(
@@ -74,7 +74,7 @@ class Issue(models.Model):
         return sum(line.qty for line in self.lines.all())
 
 
-# ================ CLASS 4: IssueLine ================
+# ================ CLASS 4: IssueLine รายการสินค้าในใบเบิก
 class IssueLine(models.Model):
     issue = models.ForeignKey(
         Issue, 
@@ -85,7 +85,7 @@ class IssueLine(models.Model):
     qty = models.PositiveIntegerField()
 
 
-# ================ CLASS 5: Listing ================
+# ================ CLASS 5: Listing ================สินค้าที่แสดงหน้าร้าน
 class Listing(models.Model):
     product = models.OneToOneField(
         Product, 
@@ -252,22 +252,6 @@ class Task(models.Model):
         choices=PRIORITY_CHOICES,
         default='medium',
         verbose_name="ลำดับความสำคัญ"
-    )
-    
-    # Related Data
-    festival = models.ForeignKey(
-        Festival,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='tasks',
-        verbose_name="เทศกาล (ถ้ามี)"
-    )
-    products = models.ManyToManyField(
-        Product,
-        blank=True,
-        related_name='tasks',
-        verbose_name="สินค้าที่เกี่ยวข้อง"
     )
     
     # Task Details

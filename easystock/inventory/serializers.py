@@ -130,7 +130,6 @@ class ListingSerializer(serializers.ModelSerializer):
     
     def get_image_url(self, obj):
         request = self.context.get('request')
-        
         if obj.image and hasattr(obj.image, 'url'):
             try:
                 if request:
@@ -138,7 +137,6 @@ class ListingSerializer(serializers.ModelSerializer):
                 return obj.image.url
             except:
                 pass
-        
         if obj.product and obj.product.image and hasattr(obj.product.image, 'url'):
             try:
                 if request:
@@ -146,7 +144,6 @@ class ListingSerializer(serializers.ModelSerializer):
                 return obj.product.image.url
             except:
                 pass
-        
         return None
 
 
@@ -194,11 +191,6 @@ class TaskSerializer(serializers.ModelSerializer):
         source='get_task_type_display', 
         read_only=True
     )
-    festival_name = serializers.CharField(
-        source='festival.name', 
-        read_only=True, 
-        allow_null=True
-    )
     is_overdue = serializers.BooleanField(read_only=True)
     days_until_due = serializers.SerializerMethodField()
     
@@ -208,9 +200,10 @@ class TaskSerializer(serializers.ModelSerializer):
             'id', 'title', 'description', 'task_type', 'task_type_display',
             'assigned_to', 'assigned_to_name',
             'status', 'status_display', 'priority', 'priority_display',
-            'festival', 'festival_name', 'products', 'target_quantity',
-            'notes', 'due_date', 'created_at', 'updated_at', 'completed_at',
+            'target_quantity', 'notes',
+            'due_date', 'created_at', 'updated_at', 'completed_at',
             'is_overdue', 'days_until_due'
+            # ← ลบ festival, festival_name, products ออกแล้ว
         ]
         read_only_fields = ['created_at', 'updated_at', 'completed_at']
     
@@ -220,37 +213,26 @@ class TaskSerializer(serializers.ModelSerializer):
 
 # ================ CustomEvent Serializer ================
 class CustomEventSerializer(serializers.ModelSerializer):
-
-    # ── field พิเศษที่ไม่มีใน Model → คำนวณเองจากฟังก์ชัน ──
     created_by_name = serializers.SerializerMethodField()
-    # แทนที่จะส่งแค่ created_by = 1 (id) → ส่งชื่อคนสร้างด้วย
-
     priority_display = serializers.CharField(
         source='get_priority_display', read_only=True
     )
-    # แปลง priority จาก "high" → "สูง" ให้อ่านง่ายขึ้น
 
     class Meta:
         model = CustomEvent
-        # field ที่จะส่งกลับไปใน JSON
         fields = [
             'id', 'title', 'date', 'event_type',
-            'priority', 'priority_display',  # ส่งทั้ง "high" และ "สูง"
+            'priority', 'priority_display',
             'notes', 'is_shared',
-            'created_by', 'created_by_name', # ส่งทั้ง id และชื่อ
+            'created_by', 'created_by_name',
             'created_at', 'updated_at'
         ]
-        # field เหล่านี้อ่านอย่างเดียว แก้ไขไม่ได้
         read_only_fields = [
             'id', 'created_by', 'created_by_name',
             'created_at', 'updated_at'
         ]
 
     def get_created_by_name(self, obj):
-        # obj = CustomEvent object ที่กำลังแปลงอยู่
         if obj.created_by:
-            return (
-                obj.created_by.get_full_name() # ถ้ามีชื่อ-นามสกุล → ใช้เลย
-                or obj.created_by.username     # ถ้าไม่มี → ใช้ username แทน
-            )
-        return None # ถ้าไม่มีผู้สร้าง → ส่ง null
+            return obj.created_by.get_full_name() or obj.created_by.username
+        return None

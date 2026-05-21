@@ -84,34 +84,45 @@ class ProductViewSet(viewsets.ModelViewSet):
     """
     จัดการสินค้าในคลัง
     """
-    permission_classes = [IsAuthenticated]  
+    # กำหนดว่าต้อง login ก่อนถึงจะใช้งาน API นี้ได้
+    permission_classes = [IsAuthenticated]
+    # ใช้ ProductSerializer ในการแปลงข้อมูลเข้า-ออก
     serializer_class = ProductSerializer
-    parser_classes = [MultiPartParser, FormParser] 
+    # รองรับการรับไฟล์ภาพและ FormData จาก Frontend
+    parser_classes = [MultiPartParser, FormParser]
 
     def get_queryset(self):
+        # ดึงสินค้าทั้งหมดที่ยังไม่ถูกลบ พร้อม join ข้อมูล category, created_by, listing
         qs = Product.objects.select_related(
             "category", "created_by", "listing"
         ).filter(is_deleted=False)
-        
+
+        # ถ้า Frontend ส่ง ?show_empty=1 มา → เอาสินค้าหมดสต็อกมาด้วย
+        # ถ้าไม่ส่งมา → กรองเฉพาะสินค้าที่ stock > 0
         show_empty = self.request.query_params.get("show_empty", "0")
         if str(show_empty).lower() not in ("1", "true", "yes"):
             qs = qs.filter(stock__gt=0)
 
+        # ถ้า Frontend ส่ง ?search=... มา → ค้นหาจากชื่อหรือรหัสสินค้า
         search = self.request.query_params.get("search")
         if search:
             qs = qs.filter(
                 Q(name__icontains=search) | Q(code__icontains=search)
             )
 
+        # ถ้า Frontend ส่ง ?category=... มา → กรองตาม id หรือชื่อหมวดหมู่
         cat = self.request.query_params.get("category")
         if cat:
             if str(cat).isdigit():
                 qs = qs.filter(category_id=int(cat))
             else:
                 qs = qs.filter(category__name=cat)
+
+        # เรียงจากสินค้าที่เพิ่มล่าสุดก่อน
         return qs.order_by("-id")
-    
+
     def get_object(self):
+        # Override สำหรับ DELETE, PATCH, PUT → เช็คว่าสินค้ายังไม่ถูกลบก่อนดึงมาใช้
         if self.request.method in ('DELETE', 'PATCH', 'PUT'):
             pk = self.kwargs.get('pk')
             try:
@@ -120,83 +131,108 @@ class ProductViewSet(viewsets.ModelViewSet):
                 return product
             except Product.DoesNotExist:
                 from rest_framework.exceptions import NotFound
+                # ถ้าไม่เจอสินค้า → ส่ง 404 กลับไป
                 raise NotFound("ไม่พบสินค้านี้")
         return super().get_object()
 
     def create(self, request, *args, **kwargs):
-
+        # รับ POST request จาก api.js (FormData: code, name, price, stock, unit, category, image)
+        # ส่งต่อให้ ProductSerializer validate + Product.objects.create() ทันที
         response = super().create(request, *args, **kwargs)
-        
+
+        # ถ้าสร้างไม่สำเร็จ (ไม่ใช่ 201) → ส่ง error กลับไปเลย ไม่ทำต่อ
         if response.status_code != 201:
             return response
-        
+
+        # ดึง product ที่เพิ่งสร้างมาจากฐานข้อมูล โดยใช้ id ที่ได้จาก response
         product = Product.objects.get(id=response.data['id'])
+
+        # บันทึก initial_stock = stock ตอนแรกที่รับเข้า เก็บไว้เป็นประวัติ
         product.initial_stock = product.stock
-        
+
+        # บันทึกว่าใครเป็นคนสร้างสินค้านี้ (ดึงจาก user ที่ login อยู่)
         if request.user and request.user.is_authenticated:
             product.created_by = request.user
-        
+
+        # save เฉพาะ 2 field ที่เพิ่งแก้ ไม่ต้อง save ทั้งหมด
         product.save(update_fields=['initial_stock', 'created_by'])
-        
+
+        # เช็คว่าระบบ LINE พร้อมใช้งานไหม
         if LINE_AVAILABLE and line_service:
             try:
+                # ดึงการตั้งค่าแจ้งเตือน LINE ของ user คนนี้จากฐานข้อมูล
                 settings_obj = NotificationSettings.objects.get(
                     user=request.user
                 )
+                # ดึง LINE user_id ของ user คนนี้
                 user_id = settings_obj.line_user_id
-                
+
                 if user_id:
+                    # ส่งแจ้งเตือนผ่าน LINE ว่ามีสินค้าเพิ่มเข้าคลัง
                     line_service.send_stock_in_notification(
-                        user_id, product.name, product.code, 
+                        user_id, product.name, product.code,
                         product.stock, product.unit
                     )
             except NotificationSettings.DoesNotExist:
+                # ถ้า user ยังไม่ได้ตั้งค่า LINE → ข้ามไปเลย ไม่ error
                 pass
             except Exception as e:
+                # ถ้าส่ง LINE ไม่สำเร็จ → แค่ print log ไม่หยุดการทำงาน
                 print(f"Error sending LINE notification: {e}")
-        
+
+        # ส่ง 201 Created พร้อมข้อมูลสินค้ากลับไปให้ Frontend
         return response
 
     def update(self, request, *args, **kwargs):
+        # ดึง product เดิมมาก่อน เพื่อเก็บ stock เดิมไว้เปรียบเทียบ
         instance = self.get_object()
         old_stock = instance.stock
-        
+
+        # ส่งต่อให้ ProductSerializer validate + product.save() ทันที
         response = super().update(request, *args, **kwargs)
-        
+
+        # ถ้าอัปเดตไม่สำเร็จ (ไม่ใช่ 200) → ส่ง error กลับไปเลย
         if response.status_code != 200:
             return response
-        
+
+        # คำนวณว่า stock เปลี่ยนไปเท่าไหร่ (บวก = รับเข้า, ลบ = เบิกออก)
         new_stock = response.data.get('stock', old_stock)
         stock_change = new_stock - old_stock
-        
+
+        # ถ้า stock เปลี่ยนแปลง และระบบ LINE พร้อมใช้งาน → ส่งแจ้งเตือน
         if stock_change != 0 and LINE_AVAILABLE and line_service:
             try:
+                # ดึงการตั้งค่าแจ้งเตือน LINE ของ user คนนี้
                 settings_obj = NotificationSettings.objects.get(
                     user=request.user
                 )
                 user_id = settings_obj.line_user_id
-                
+
                 if user_id:
                     product = Product.objects.get(id=response.data['id'])
+                    # ดึงชื่อ user ที่ทำการอัปเดต
                     updated_by = (
-                        request.user.get_full_name() or 
+                        request.user.get_full_name() or
                         request.user.username
                     )
-                    
+
                     if stock_change > 0:
+                        # stock เพิ่มขึ้น → แจ้งเตือนรับเข้าสินค้า
                         line_service.send_stock_in_notification(
-                            user_id, product.name, product.code, 
+                            user_id, product.name, product.code,
                             stock_change, product.unit
                         )
-                        
+
+                        # ถ้า stock ใกล้หมด (น้อยกว่า 5) → แจ้งเตือนเพิ่มเติม
                         if product.stock < 5 and product.stock > 0:
                             line_service.send_low_stock_alert(
-                                user_id, product.name, product.code, 
+                                user_id, product.name, product.code,
                                 product.stock, product.unit
                             )
                     else:
+                        # stock ลดลง → แจ้งเตือนว่ามีการปรับปรุงสต็อก
                         line_service.send_text_message(
-                            user_id, 
+                            user_id,
                             f"""📉 ปรับปรุงสต็อก
 
 📦 สินค้า: {product.name}
@@ -207,44 +243,52 @@ class ProductViewSet(viewsets.ModelViewSet):
 
 บันทึกเรียบร้อยแล้ว"""
                         )
-                        
+
+                        # ถ้า stock เหลือ 0 → แจ้งเตือนสินค้าหมดเพิ่มเติม
                         if new_stock == 0:
                             line_service.send_out_of_stock_alert(
                                 user_id, product.name, product.code
                             )
             except NotificationSettings.DoesNotExist:
+                # ถ้า user ยังไม่ได้ตั้งค่า LINE → ข้ามไปเลย ไม่ error
                 pass
             except Exception as e:
+                # ถ้าส่ง LINE ไม่สำเร็จ → แค่ print log ไม่หยุดการทำงาน
                 print(f"Error sending LINE notification: {e}")
-        
+
+        # ส่ง 200 OK พร้อมข้อมูลสินค้าที่อัปเดตแล้วกลับไปให้ Frontend
         return response
 
     def destroy(self, request, *args, **kwargs):
+        # เช็คสิทธิ์ก่อน → ต้องเป็น superuser เท่านั้นถึงจะลบได้
         if not request.user.is_superuser:
             return Response(
-                {"detail": "คุณไม่มีสิทธิ์ลบสินค้า"}, 
+                {"detail": "คุณไม่มีสิทธิ์ลบสินค้า"},
                 status=status.HTTP_403_FORBIDDEN
             )
-        
+
         product = self.get_object()
-        
+
+        # ถ้า stock ยังมีอยู่ → ลบไม่ได้ ต้องเบิกออกให้หมดก่อน
         if product.stock > 0:
             return Response(
-                {"detail": "ไม่สามารถลบสินค้าที่ยังมีสต็อกอยู่"}, 
+                {"detail": "ไม่สามารถลบสินค้าที่ยังมีสต็อกอยู่"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        # ลบ Listing ที่เชื่อมอยู่ (ถ้ามี)
+
+        # ลบ Listing ที่เชื่อมอยู่กับสินค้านี้ (ถ้ามี)
         try:
             product.listing.delete()
         except Exception:
             pass
-        
-        # ลบ IssueLine ที่อ้างอิงสินค้านี้
+
+        # ลบประวัติการเบิกสินค้าที่อ้างอิงสินค้านี้
         IssueLine.objects.filter(product=product).delete()
-        
-        # ลบสินค้า
+
+        # ลบสินค้าออกจากฐานข้อมูล
         product.delete()
+
+        # ส่ง 204 No Content กลับไป → ลบสำเร็จ ไม่มีข้อมูลส่งคืน
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

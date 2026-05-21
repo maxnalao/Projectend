@@ -60,7 +60,7 @@ class TaskAdmin(admin.ModelAdmin):
     list_display = ['title', 'assigned_to', 'status', 'priority', 'due_date']
     list_filter = ['status', 'priority', 'task_type', 'due_date']
     search_fields = ['title', 'description']
-    filter_horizontal = ['products']
+    filter_horizontal = []  # ← ลบ products ออกแล้ว
     readonly_fields = ['created_at', 'updated_at', 'completed_at']
     fieldsets = (
         ('ข้อมูลพื้นฐาน', {
@@ -73,7 +73,8 @@ class TaskAdmin(admin.ModelAdmin):
             'fields': ('status', 'priority')
         }),
         ('ข้อมูลเพิ่มเติม', {
-            'fields': ('festival', 'products', 'target_quantity', 'image', 'checklist')
+            # ← ลบ festival และ products ออกแล้ว
+            'fields': ('target_quantity', 'image', 'checklist')
         }),
         ('เวลา', {
             'fields': ('due_date', 'notes', 'created_at', 'updated_at', 'completed_at')
